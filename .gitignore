@@ -1,0 +1,7 @@
+# lp model files
+*.lp
+
+.ipynb_checkpoints
+.vscode
+__pycache__
+.cache
