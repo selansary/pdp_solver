@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Any, List
 
-from numpy import exp
+import numpy as np
 
 from . import Problem, Solution
 
@@ -44,7 +44,7 @@ class SimulatedAnnealing(AcceptanceCriterion):
     ) -> bool:
         old_obj = problem.evaluate_solution(old_solution)
         new_obj = problem.evaluate_solution(new_solution)
-        accept_prob = exp(-(new_obj - old_obj) / self.temperature)
+        accept_prob = np.exp(-(new_obj - old_obj) / self.temperature)
         accept = random.choices([True, False], weights=[accept_prob, 1 - accept_prob])[
             0
         ]
@@ -87,12 +87,12 @@ class LNS:
         start_time = time.time()
         while it < self.max_iteration and time.time() - start_time < self.time_limit:
             # Randomly select a nb of requests to be removed from the solution
-            # nb_removed = random.randint(1, nb_requests // 3)
+            nb_removed = random.randint(1, nb_requests // 3)
 
             # Gradually decrement number of requets to remove: by 1 every 5 iterations
-            nb_removed = max(1, (nb_requests // 3) - (it // 5))
+            # nb_removed = max(1, (nb_requests // 3) - (it // 20))
             # Gradually increment number of requets to remove: by 1 every 5 iterations
-            nb_removed = max(1, (nb_requests // 3) + (it // 5))
+            # nb_removed = max(1, (nb_requests // 3) + (it // 5))
 
             # Apply the destroy and repair operators to retrieve a new solution
             # in the neighborhood of the current solution
@@ -133,7 +133,11 @@ class LNS:
     ) -> Solution:
         N = len(self.problem.items)
         pickup_vertices = self.problem.P
-        requests_to_remove = random.choices(pickup_vertices, k=nb_requests_to_remove)
+        # This performs random with replacement!! May result in wrong / infeasible solutions
+        # requests_to_remove = random.choices(pickup_vertices, k=nb_requests_to_remove)
+        requests_to_remove = np.random.choice(
+            pickup_vertices, size=nb_requests_to_remove, replace=False
+        )
 
         def removable_vertex(v: int) -> bool:
             pick_vertex = v if v <= N else v - N
