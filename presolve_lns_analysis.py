@@ -30,6 +30,8 @@ def main():
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
+    # possible_time_limits = [(1, 10)]
+
     results = []
     for nb_items in possible_nb_items:
         for nb_compartments in possible_nb_compartments:
