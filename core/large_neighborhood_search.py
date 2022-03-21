@@ -476,16 +476,45 @@ class LNS:
 
 
 class PLNS(LNS):
+    def __init__(
+        self,
+        problem: Problem,
+        max_iteration: int = 10,
+        time_limit: float = 5,
+        initial_solution: Solution = None,
+    ) -> None:
+        super().__init__(problem, max_iteration, time_limit, initial_solution)
+        self.processing_pool = self.init_processing_pool()
+
+    def init_processing_pool(self) -> mp.Pool:
+        # TODO adjust number of cores
+        cpus = mp.cpu_count()
+        return mp.Pool(cpus)
+
+    def terminate_processing_pool(self):
+        self.processing_pool.close()
+        self.processing_pool.terminate()
+
+    def search(self, initial_solution: Solution) -> Solution:
+        res = super().search(initial_solution)
+        self.terminate_processing_pool()
+        return res
+
     def repair(self, destroyed_solution: Solution):
-        parallel_operator = MultiRepairOperator(destroyed_solution, self.problem)
+        parallel_operator = MultiRepairOperator(
+            destroyed_solution, self.problem, self.processing_pool
+        )
         return parallel_operator.repair()
 
 
 class MultiRepairOperator:
-    def __init__(self, destroyed_solution: Solution, problem: Problem) -> None:
+    def __init__(
+        self, destroyed_solution: Solution, problem: Problem, processing_pool: mp.Pool
+    ) -> None:
         self.problem = problem
         self.destroyed_solution = destroyed_solution
         self.stack_assignment = destroyed_solution.stack_assignment
+        self.processing_pool = processing_pool
 
         N, V, P, D, C, M = self.problem.problem_vars()
         self.removed_pickups = [v for v in P if v not in destroyed_solution.order]
@@ -514,11 +543,33 @@ class MultiRepairOperator:
         return cost
 
     def repair(self) -> Solution:
+        return self.repair_using_pool()
+
+    def repair_using_pool(self) -> Solution:
+        best_solution = None
+        best_objective = None
+        cpus = mp.cpu_count()
+
+        results = self.processing_pool.map(anything, tuple(self.insertion_orders))
+
+        for res in results:
+            obj = self.problem.evaluate_solution(res)
+            if not best_solution or obj < best_objective:
+                best_solution = res
+                best_objective = obj
+
+        print(f"One iteration of PLNS completed w / {best_objective}")
+        return best_solution
+
+
+    def repair_generate_processes(self) -> Solution:
         q = mp.Queue()
         best_solution = None
         best_objective = None
 
-        processes = [] # using a pool could actually be better because spawinging is expensive
+        processes = (
+            []
+        )  # using a pool could actually be better because spawinging is expensive
         for order in self.insertion_orders:
             process = mp.Process(target=self.single_order_repair, args=(order, q))
             processes.append(process)
@@ -537,7 +588,7 @@ class MultiRepairOperator:
 
         return best_solution
 
-    def single_order_repair(self, insertion_order, q):
+    def single_order_repair(self, insertion_order, q=None):
         N, V, P, D, C, M = self.problem.problem_vars()
         stack_assignment = deepcopy(self.stack_assignment)
         extended_partial_order = deepcopy(self.destroyed_solution.order)
@@ -646,9 +697,12 @@ class MultiRepairOperator:
 
         solution = Solution(self.items, extended_partial_order, stack_assignment)
 
-        # Add the solution to the multiprocessing queue
         # print(f"Process {os.getpid()} adding its sol to q w/ cost {best_extended_cost} but {self.problem.evaluate_solution(solution)}")
-        q.put(solution)
+        if q is not None:
+            # Add the solution to the multiprocessing queue
+            q.put(solution)
+        else:
+            return solution
 
 
 def permute(input: List[Any]) -> List[List[Any]]:
@@ -659,3 +713,7 @@ def permute(input: List[Any]) -> List[List[Any]]:
 
 def slice_and_insert(input_list: List[int], sth: int, idx: int) -> List[int]:
     return input_list[:idx] + [sth] + input_list[idx:]
+
+def anything(order):
+    print(order)
+    return 1
