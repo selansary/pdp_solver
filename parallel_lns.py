@@ -223,7 +223,7 @@ def parallelism_within_lns():
     possible_nb_items = [15]
     possible_nb_compartments = [5]
 
-    total_limits = [5, 10]
+    total_limits = [5]
     possible_time_limits = []
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])

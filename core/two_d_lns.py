@@ -6,7 +6,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 
@@ -62,7 +62,7 @@ class SimulatedAnnealing(AcceptanceCriterion):
         self.temperature *= self.alpha
 
 
-class LNS:
+class TwoDLNS:
     def __init__(
         self,
         problem: Problem,
@@ -180,166 +180,6 @@ class LNS:
             is_partial=True,
         )
 
-    def _least_cost_repair(self, destroyed_solution: Solution) -> Solution:
-        N, V, P, D, C, M = self.problem.problem_vars()
-        items = self.problem.items
-
-        pickup_vertices = self.problem.P
-        removed_pickups = [
-            v for v in pickup_vertices if v not in destroyed_solution.order
-        ]
-
-        # removed_deliveries = [v + N for v in removed_pickups]
-        # missing_vertices = removed_pickups + removed_deliveries
-
-        def pickup_vertex(v: int) -> int:
-            return v if v <= N else v - N
-
-        def slice_and_insert(input_list: List[int], sth: int, ind: int) -> List[int]:
-            return input_list[:ind] + [sth] + input_list[ind:]
-
-        def evaluate_route_cost(route_order: List[int]) -> int:
-            cost = 0
-            prev = 0  # we always start at the depot
-            for v in route_order[1:]:
-                cost += C[prev][v]
-                prev = v
-            return cost
-
-        # Try all possible insertion orders for the removed vertices
-        # and choose the order that results in the least cost solution
-        # (different from paper which specifies "insertion based on removal order")
-        partial_order = destroyed_solution.order
-        insertion_orders = permute(removed_pickups)
-        best_total_cost = None
-        best_total_order = None
-        best_stack_assignment = None
-        insertion_order = random.choices(insertion_orders, k=1)[0]
-
-        for insertion_order in insertion_orders:
-            # Try this insertion order and perform least cost insertion
-            # for the vertices. Try to insert the pickup vertex anywhere on any
-            # stack with capacity then try to insert the delivery vertex
-            # in a feasible location (without violated LIFO constraints)
-            stack_assignment = deepcopy(destroyed_solution.stack_assignment)
-            extended_partial_order = list(partial_order)
-            for vertex in insertion_order:
-                # order to be updated for after every request inserted
-                # in the current insert order
-                best_extended_cost = None
-                best_extended_partial_order = None
-                best_extended_stack_assignment = None
-
-                # Try a stack assignment
-                for stack_idx in M:
-                    # Try a pos in the visiting order for the pickup vertex
-                    for pick_pos in range(1, len(extended_partial_order) + 1):
-                        # extend the extended order with the pick
-                        ep_order = slice_and_insert(
-                            extended_partial_order, vertex, pick_pos
-                        )
-
-                        # Try a pos for the delivery vertex
-                        del_pos = pick_pos + 1
-                        while del_pos < len(ep_order) + 1:
-
-                            feasible = False
-                            if del_pos == pick_pos + 1:
-                                # delivery right after pickup
-                                feasible = True
-
-                            else:
-                                # current pos is after a vertex for another request
-                                # if the vertex is related to a different stack, it's
-                                # possible to deliver the request after this vertex
-                                other_vertex = ep_order[del_pos - 1]
-                                curr_stack_assignment = stack_assignment[stack_idx]
-                                if (
-                                    pickup_vertex(other_vertex)
-                                    not in curr_stack_assignment
-                                ):
-                                    feasible = True
-
-                                # else: other request assigned to the same stack
-                                elif pickup_vertex(other_vertex) == other_vertex:
-                                    # if the vertex before is a pickup vertex for
-                                    # another request, we cannot deliver the to-be-inserted
-                                    # request since its item is not on top of the stack!
-                                    #  --> jump till the delivery pos of the other request
-                                    del_pos = ep_order.index(other_vertex + N) + 1
-                                    continue
-                                else:
-                                    # the other vertex is a delivery vertex
-                                    # since this after delivering the other request,
-                                    # it's only feasible if the other request has been
-                                    # picked after the to-be-inserted one
-                                    if ep_order.index(other_vertex) > pick_pos:
-                                        feasible = True
-
-                            if feasible:
-                                # extend the extended pick order with the delivery
-                                ed_order = slice_and_insert(
-                                    ep_order, vertex + N, del_pos
-                                )
-
-                                # sanity check for stack capacity
-                                ep_stack_assign = deepcopy(stack_assignment)
-                                ep_stack_assign[stack_idx].append(vertex)
-
-                                related_vertices = ep_stack_assign[stack_idx]
-                                corresponding_deliveres = [
-                                    i + N for i in related_vertices
-                                ]
-
-                                stack = self.problem.vehicle.compartments[stack_idx]
-                                collected_demand = 0
-                                for v in ed_order[1:]:
-                                    demand = items[pickup_vertex(v)].length
-                                    if v in related_vertices:
-                                        collected_demand += demand
-                                    elif v in corresponding_deliveres:
-                                        collected_demand -= demand
-
-                                    if (
-                                        collected_demand < 0
-                                        or collected_demand > stack.capacity
-                                    ):
-                                        # not a valid delivery position
-                                        feasible = False
-                                        break
-
-                            if feasible:
-                                # feasible solution found!
-                                # check detour and consider least cost detour
-                                e_cost = evaluate_route_cost(ep_order)
-                                if (
-                                    best_extended_cost is None
-                                    or best_extended_cost > e_cost
-                                ):
-                                    best_extended_cost = e_cost
-                                    # least cost detour found, update extended order
-                                    # with new request
-                                    best_extended_partial_order = ed_order
-                                    best_extended_stack_assignment = ep_stack_assign
-
-                            del_pos += 1
-
-                # Update the partial order and the stack assignment for the
-                # newly-inserted request
-                extended_partial_order = best_extended_partial_order
-                stack_assignment = best_extended_stack_assignment
-
-            # Check if this insertion order contributes to the lowest cost total order
-            total_cost = evaluate_route_cost(extended_partial_order)
-            if best_total_cost is None or best_total_cost > total_cost:
-                best_total_cost = total_cost
-                best_total_order = extended_partial_order
-                best_stack_assignment = best_extended_stack_assignment
-
-        return Solution(
-            items, best_total_order, best_stack_assignment, self.problem.vehicle
-        )
-
     def least_cost_repair(self, destroyed_solution: Solution) -> Solution:
         N, V, P, D, C, M = self.problem.problem_vars()
         items = self.problem.items
@@ -380,6 +220,9 @@ class LNS:
         stack_assignment = deepcopy(destroyed_solution.stack_assignment)
         extended_partial_order = list(partial_order)
         for vertex in insertion_order:
+            compatible_stacks = [
+                self.problem.compartment_capabilities[k][vertex] for k in M
+            ]
             # order to be updated for after every request inserted
             # in the current insert order
             best_extended_cost = None
@@ -387,7 +230,7 @@ class LNS:
             best_extended_stack_assignment = None
 
             # Try a stack assignment
-            for stack_idx in M:
+            for stack_idx in compatible_stacks:
                 # Try a pos in the visiting order for the pickup vertex
                 for pick_pos in range(1, len(extended_partial_order) + 1):
                     # extend the extended order with the pick
@@ -443,7 +286,14 @@ class LNS:
                             stack = self.problem.vehicle.compartments[stack_idx]
                             collected_demand = 0
                             for v in ed_order[1:]:
-                                demand = items[pickup_vertex(v)].length
+                                comp = self.problem.vehicle.compartments[stack_idx]
+                                item = items[pickup_vertex(v)]
+
+                                if comp.length == item.length:
+                                    demand = item.width
+                                else:
+                                    demand = item.length
+
                                 if v in related_vertices:
                                     collected_demand += demand
                                 elif v in corresponding_deliveres:
@@ -483,7 +333,7 @@ class LNS:
         )
 
 
-class PLNS(LNS):
+class TwoDPLNS(TwoDLNS):
     def repair(self, destroyed_solution: Solution):
         parallel_operator = MultiRepairOperator(destroyed_solution, self.problem)
         return parallel_operator.repair()
@@ -553,6 +403,9 @@ class MultiRepairOperator:
         extended_partial_order = deepcopy(self.destroyed_solution.order)
 
         for vertex in insertion_order:
+            compatible_stacks = [
+                self.problem.compartment_capabilities[k][vertex] for k in M
+            ]
             # order to be updated for after every request inserted
             # in the current insert order
             best_extended_cost = None
@@ -560,7 +413,7 @@ class MultiRepairOperator:
             best_extended_stack_assignment = None
 
             # Try a stack assignment
-            for stack_idx in M:
+            for stack_idx in compatible_stacks:
                 # Try a pos in the visiting order for the pickup vertex
                 for pick_pos in range(1, len(extended_partial_order) + 1):
                     # extend the extended order with the pick
@@ -619,7 +472,14 @@ class MultiRepairOperator:
                             stack = self.problem.vehicle.compartments[stack_idx]
                             collected_demand = 0
                             for v in ed_order[1:]:
-                                demand = self.items[self.pickup_vertex(v)].length
+                                comp = self.problem.vehicle.compartments[stack_idx]
+                                item = self.items[self.pickup_vertex(v)]
+
+                                if comp.length == item.length:
+                                    demand = item.width
+                                else:
+                                    demand = item.length
+
                                 if v in related_vertices:
                                     collected_demand += demand
                                 elif v in corresponding_deliveres:
@@ -663,8 +523,8 @@ class MultiRepairOperator:
         q.put(solution)
 
 
-def permute(input: List[Any]) -> List[List[Any]]:
-    tupled = list(itertools.permutations(input))
+def permute(input: List[Any], length: Optional[int] = None) -> List[List[Any]]:
+    tupled = list(itertools.permutations(input, length))
     listed = [list(tup) for tup in tupled]
     return listed
 

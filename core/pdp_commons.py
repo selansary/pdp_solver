@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 
 
@@ -16,15 +16,15 @@ class TwoDItem(Item):
 @dataclass
 class Compartment:
     depth: int  # capacity
-    _stack: List[Item] = field(default_factory=list)
 
     @property
     def capacity(self) -> int:
         return self.depth
 
-    @property
-    def remaining_capacity(self) -> int:
-        return self.depth - sum(item.length for item in self._stack)
+
+@dataclass
+class TwoDCompartment(Compartment):
+    length: int
 
 
 @dataclass
