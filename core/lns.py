@@ -1,21 +1,27 @@
 import itertools
 import multiprocessing as mp
-import os
 import random
 import time
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Any, List
+from dataclasses import dataclass, field
+from enum import Enum, Flag, auto
+from typing import Any, Callable, List, Optional
 
 import numpy as np
 
-from . import Problem, Solution
+from . import OptimizationObjective, Problem, Solution
 
 
 class AcceptanceCriterion(ABC):
+    """Abstract base class for acceptance criteria to be used with LNS."""
+
     @abstractmethod
     def apply_acceptance_function(
-        self, old_solution: Solution, new_solution: Solution, problem: Problem
+        self,
+        old_solution: Solution,
+        new_solution: Solution,
+        eval_fun: Callable[[Solution], int],
     ) -> bool:
         pass
 
@@ -25,6 +31,8 @@ class AcceptanceCriterion(ABC):
 
 
 class SimulatedAnnealing(AcceptanceCriterion):
+    """Simulated Annealing as an accpetance criterion for LNS."""
+
     def __init__(
         self, alpha: float = 0.99975, starting_temperature: float = 1.05
     ) -> None:
@@ -32,19 +40,22 @@ class SimulatedAnnealing(AcceptanceCriterion):
         self.temperature = starting_temperature
 
     def apply_acceptance_function(
-        self, old_solution: Solution, new_solution: Solution, problem: Problem
+        self,
+        old_solution: Solution,
+        new_solution: Solution,
+        eval_fun: Callable[[Solution], int],
     ) -> bool:
-        return self._apply_acceptance_function(old_solution, new_solution, problem)
+        return self._apply_acceptance_function(old_solution, new_solution, eval_fun)
 
     def _apply_acceptance_function(
         self,
         old_solution: Solution,
         new_solution: Solution,
-        problem: Problem,
+        eval_fun: Callable[[Solution], int],
         update_params: bool = True,
     ) -> bool:
-        old_obj = problem.evaluate_solution(old_solution)
-        new_obj = problem.evaluate_solution(new_solution)
+        old_obj = eval_fun(old_solution)
+        new_obj = eval_fun(new_solution)
         accept_prob = np.exp(-(new_obj - old_obj) / self.temperature)
         accept = random.choices([True, False], weights=[accept_prob, 1 - accept_prob])[
             0
@@ -61,102 +72,305 @@ class SimulatedAnnealing(AcceptanceCriterion):
         self.temperature *= self.alpha
 
 
+class StoppingCriterion(Flag):
+    """Stopping criterion for the LNS."""
+
+    TIMELIMIT = auto()
+    MAX_ITERATIONS = auto()
+    NO_IMPROVEMENT = auto()
+
+    MAX_ITERATIONS_TIMELIMIT = MAX_ITERATIONS | TIMELIMIT
+
+
+class DestructionDegreeCriterion(Enum):
+    """Degree of Destruction cirterion to be used during LNS."""
+
+    RANDOM = auto()
+    """Randomly choose a suitable degree of distruction for each search iteration."""
+
+    CONSTANT = auto()
+    """Choose a constant degree of distruction throughout the search."""
+
+    GRADUALLY_INCREASING = auto()
+    """Increase the degree of distruction gradually as the search progresses."""
+
+    GRADUALLY_DECREASING = auto()
+    """Decrease the degree of distruction gradually as the search progresses."""
+
+
+class DestroyStrategy(Enum):
+    """Strategy to be used for the destroy operator during LNS."""
+
+    RANDOM = auto()
+
+
+class RepairStrategy(Enum):
+    """Strategy to be used for the repair operator during LNS."""
+
+
+@dataclass
+class SearchSolution:
+    iteration: int
+    solution: Solution
+    objective: int
+    time_found: float = field(default_factory=time.time)
+
+
 class LNS:
+    """
+    Large Neigborhood Search Metaheuristics class.
+    """
+
     def __init__(
         self,
         problem: Problem,
-        max_iteration: int = 10,
-        time_limit: float = 5.0,
-        initial_solution: Solution = None,
+        initial_solution: Solution,
+        max_iterations: int = 1000,
+        max_without_improvement: int = 10,
+        time_limit: float = 1000.0,
+        min_destruction_degree: float = 0.15,
+        max_destruction_degree: float = 0.50,
+        optimization_objective: OptimizationObjective = (
+            OptimizationObjective.CHEAPEST_ROUTE
+        ),
     ) -> None:
-        self.problem = problem
+        """
+        `max_iterations` (number of iterations) is the parameter used for stopping
+        criteria: `StoppingCriterion.MAX_ITERATIONS` and `MAX_ITERATIONS_TIMELIMIT`
 
-        # TODO possibly variable stopping criterion
+        `time_limit` (seconds) is the parameter used for stopping criteria:
+        `StoppingCriterion.TIMELIMIT` and `MAX_ITERATIONS_TIMELIMIT`
+
+        `max_without_improvement` (number of iterations) is the parameter used for
+        stopping criterion: `StoppingCriterion.MAX_ITERATIONS`
+
+        The default stopping criterion of the search is based on the maximum number of
+        iterations and time limit provided on initialization. Other stopping criteria
+        can be set using `set_stopping_criterion`.
+
+        `min_destruction_degree` (percentage of requests) is a parameter used for
+        estimating the degree for destruction every search iteration.
+        `max_destruction_degree` (percentage of requests) is a parameter used for
+        estimating the degree for destruction every search iteration.
+
+        The default degree of destruction is based on the destruction degreee criterion
+        `DestructionDegree.CONSTANT` and is the average of the `min_destruction_degree`
+        and the `max_destruction_degree`. Other degree of destruction criteria can be
+        set using `set_destruction_degree_criterion`.
+
+        `optimization_objective` is the minimization objective for the solution search
+        """
+        self.problem = problem
+        self.initial_solution = initial_solution
+
+        # Parameters for stopping criterion
         self.time_limit = time_limit
-        self.max_iteration = max_iteration
+        self.max_iterations = max_iterations
+        self.max_without_improvement = max_without_improvement
+        self.stop = self._stop_max_iterations_timelimit
+
+        # Parameters for degree of destruction
+        self.min_destruction_degree = min_destruction_degree
+        self.max_destruction_degree = max_destruction_degree
+        self.degree_of_destruction_strategy = self._get_constant_destruction_degree
+
+        self.optimization_objective = optimization_objective
 
         # TODO possibly variable acceptance criterion
         self.acceptance_criterion = SimulatedAnnealing()
 
         # TODO set destroy strategy
         # TODO set insertion strategy
-        #
-        self.initial_solution = initial_solution
 
-    def search_local_solution(self) -> Solution:
-        return self.search(self.initial_solution)
+        initial_objective = self.evaluate_solution(initial_solution)
+        self.solutions_cache: List[SearchSolution] = [
+            SearchSolution(-1, initial_solution, initial_objective)
+        ]
 
-    def search(self, initial_solution: Solution) -> Solution:
-        best_solution = initial_solution
-        initial_obj = self.problem.evaluate_solution(initial_solution)
-        best_obj = self.problem.evaluate_solution(best_solution)
+        self.start_time: Optional[float] = None
+        self.iteration = 0
 
-        current_solution = initial_solution
-        nb_requests = len(initial_solution.items)
+    def search(self) -> Solution:
+        self.iteration = 0
+        self.start_time = time.time()
 
-        it = 0
-        stable = 0
-        start_time = time.time()
-        while it < self.max_iteration and time.time() - start_time < self.time_limit:
-            # Randomly select a nb of requests to be removed from the solution
-            # nb_removed = random.randint(1, nb_requests // 3)
-            # nb_removed = random.randint(1, 4)
-            # nb_removed = min(nb_requests, 5)
-            # nb_removed = 3 if stable < 2 else 4
-            nb_removed = 3
+        current_solution = self.initial_solution
+        current_objective = self.evaluate_solution(current_solution)
 
-            # Gradually decrement number of requets to remove: by 1 every 5 iterations
-            # nb_removed = max(1, (nb_requests // 4) - (it // 5))
-            # Gradually increment number of requets to remove: by 1 every 5 iterations
-            # nb_removed = max(1, 1 + (it // 5))
+        best_solution = current_solution
+        best_objective = current_objective
+
+        while not self.stop():
+            # Get the degree of destruction based on the set DestructionDegreeCriterion
+            nb_removed = self.get_destruction_degree()
 
             # Apply the destroy and repair operators to retrieve a new solution
             # in the neighborhood of the current solution
             solution = deepcopy(current_solution)
             solution = self.repair(self.destroy(solution, nb_removed))
 
-            curr_obj = self.problem.evaluate_solution(current_solution)
-            new_obj = self.problem.evaluate_solution(solution)
+            # Cache the found solution
+            new_objective = self.evaluate_solution(solution)
+            self.solutions_cache.append(
+                SearchSolution(self.iteration, solution, new_objective)
+            )
 
             # Check if the objective improved or if the acceptance criterion allows
-            # the new unimproved solution
-            # (applicable in case the problem is a minimization problem)
-            # if new_obj < curr_obj or self.accept(current_solution, solution):
-            if new_obj < curr_obj:
-                stable = 0
+            # the new unimproved solution (applicable for a minimization problem)
+            if new_objective < current_objective or self.accept(
+                current_solution, solution
+            ):
                 current_solution = solution
-                if new_obj < best_obj:
+                current_objective = new_objective
+                if new_objective < best_objective:
                     best_solution = solution
+                    best_objective = new_objective
                     self.best_solution = best_solution
-                    best_obj = new_obj
 
-            it += 1
-            stable += 1
+            self.iteration += 1
 
-        print(
-            f"New objective for LNS {best_obj} from {initial_obj} by "
-            f"{os.getpid()} in {time.time() - start_time} in {it} iterations"
-        )
         return best_solution
 
+    def evaluate_solution(self, solution: Solution):
+        """
+        Evaluate the solution for the problem based on the optimization objective
+        specified on initialization.
+        """
+        return self.problem.evaluate_solution(solution, self.optimization_objective)
+
+    def _stop_max_iterations(self) -> bool:
+        return self.iteration > self.max_iterations
+
+    def _stop_timelimit(self) -> bool:
+        assert self.start_time
+        return time.time() - self.start_time > self.time_limit
+
+    def _stop_max_iterations_timelimit(self) -> bool:
+        return self._stop_max_iterations() or self._stop_timelimit()
+
+    def _stop_no_improvement(self) -> bool:
+        max_no_impro = self.max_without_improvement
+        if len(self.solutions_cache) < max_no_impro:
+            return False
+
+        impro_count = 0
+        for i in range(1, len(self.solutions_cache) + 1):
+            if (
+                self.solutions_cache[-i].objective
+                < self.solutions_cache[-i - 1].objective
+            ):
+                # the solution improved wrt previous solution
+                impro_count = 1
+            else:
+                # the solution didn't improve wrt previous solution
+                impro_count += 1
+
+            if impro_count >= self.max_without_improvement:
+                return False
+
+        return True
+
+    def set_stopping_criterion(self, stopping_criterion: StoppingCriterion):
+        """
+        Set the stopping criterion of the search. Possible stopping criteria are:
+            - `StoppingCriterion.MAX_ITERATIONS`
+            - `StoppingCriterion.TIMELIMIT`
+            - `StoppingCriterion.MAX_ITERATIONS_TIMELIMIT`
+            - `StoppingCriterion.NO_IMPROVEMENT`
+        """
+        if stopping_criterion == StoppingCriterion.MAX_ITERATIONS:
+            self.stop = self._stop_max_iterations
+        elif stopping_criterion == StoppingCriterion.TIMELIMIT:
+            self.stop = self._stop_timelimit
+        elif stopping_criterion == StoppingCriterion.MAX_ITERATIONS_TIMELIMIT:
+            self.stop = self._stop_max_iterations_timelimit
+        elif stopping_criterion == StoppingCriterion.NO_IMPROVEMENT:
+            self.stop = self._stop_no_improvement
+
+    def get_destruction_degree(self) -> int:
+        """Get the destruction degree based on the desrtuction degree criterion set."""
+        return self.degree_of_destruction_strategy()
+
+    def _get_random_destruction_degree(self) -> int:
+        nb_requests = len(self.problem.items)
+        min_degree = int(self.min_destruction_degree * nb_requests)
+        max_degree = int(self.max_destruction_degree * nb_requests)
+        return random.randint(min_degree, max_degree)
+
+    def _get_constant_destruction_degree(self) -> int:
+        nb_requests = len(self.problem.items)
+        min_degree = int(self.min_destruction_degree * nb_requests)
+        max_degree = int(self.max_destruction_degree * nb_requests)
+        return (max_degree + min_degree) // 2
+
+    def _get_increasing_destruction_degree(self) -> int:
+        nb_requests = len(self.problem.items)
+        min_degree = int(self.min_destruction_degree * nb_requests)
+        max_degree = int(self.max_destruction_degree * nb_requests)
+        range_degree = max_degree - min_degree
+        iteration_ratio = self.iteration / self.max_iterations
+        return min_degree + int(iteration_ratio * range_degree)
+
+    def _get_decreasing_destruction_degree(self) -> int:
+        nb_requests = len(self.problem.items)
+        min_degree = int(self.min_destruction_degree * nb_requests)
+        max_degree = int(self.max_destruction_degree * nb_requests)
+        range_degree = max_degree - min_degree
+        iteration_ratio = self.iteration / self.max_iterations
+        return max_degree - int(iteration_ratio * range_degree)
+
+    def set_destruction_degree_criterion(
+        self, destruction_degree_criterion: DestructionDegreeCriterion
+    ):
+        """
+        Set the degree of destruction cirterion of the search. Possible destruction
+        degree criteria are:
+            - `DestructionDegreeCriterion.RANDOM`
+            - `DestructionDegreeCriterion.CONSTANT`
+            - `DestructionDegreeCriterion.GRADUALLY_INCREASING`
+            - `DestructionDegreeCriterion.GRADUALLY_DECREASING`
+        """
+        if destruction_degree_criterion == DestructionDegreeCriterion.RANDOM:
+            self.degree_of_destruction_strategy = self._get_random_destruction_degree
+        elif destruction_degree_criterion == DestructionDegreeCriterion.CONSTANT:
+            self.degree_of_destruction_strategy = self._get_constant_destruction_degree
+        elif (
+            destruction_degree_criterion
+            == DestructionDegreeCriterion.GRADUALLY_INCREASING
+        ):
+            self.degree_of_destruction_strategy = (
+                self._get_increasing_destruction_degree
+            )
+        elif (
+            destruction_degree_criterion
+            == DestructionDegreeCriterion.GRADUALLY_DECREASING
+        ):
+            self.degree_of_destruction_strategy = (
+                self._get_decreasing_destruction_degree
+            )
+
     def accept(self, old_solution: Solution, new_solution: Solution) -> bool:
+        """
+        Return whether to accept the new_solution based on the current
+        acceptance_criterion of the LNS.
+        """
         return self.acceptance_criterion.apply_acceptance_function(
-            old_solution, new_solution, self.problem
+            old_solution, new_solution, self.evaluate_solution
         )
 
     def destroy(self, solution: Solution, nb_requests_to_remove: int) -> Solution:
+        """Return a destroyed copy of the solution."""
         return self.random_destroy(solution, nb_requests_to_remove)
 
-    def repair(self, destroyed_solution: Solution):
-        return self.least_cost_repair(destroyed_solution)
+    def repair(self, destroyed_solution: Solution) -> Solution:
+        """Return a repaired copy of the destroyed solution."""
+        return self.random_least_cost_repair(destroyed_solution)
 
     def random_destroy(
         self, solution: Solution, nb_requests_to_remove: int
     ) -> Solution:
         N = len(self.problem.items)
         pickup_vertices = self.problem.P
-        # This performs random with replacement!! May result in wrong / infeasible solutions
-        # requests_to_remove = random.choices(pickup_vertices, k=nb_requests_to_remove)
         requests_to_remove = np.random.choice(
             pickup_vertices, size=nb_requests_to_remove, replace=False
         )
@@ -179,58 +393,54 @@ class LNS:
             is_partial=True,
         )
 
-    def _least_cost_repair(self, destroyed_solution: Solution) -> Solution:
-        N, V, P, D, C, M = self.problem.problem_vars()
+    def optimal_sequential_least_cost_repair(
+        self, destroyed_solution: Solution
+    ) -> Solution:
+        """Brute force for an optimally-repaired solution. Single process repair.
+
+        Note: Too slow, a single iteration may exceed time limit for the search.
+        For optimal repair, use the multiple-process repair instead.
+        """
+        N, V, P, D, C, M = self.problem.problem_data()
         items = self.problem.items
+        compartments = self.problem.vehicle.compartments
 
         pickup_vertices = self.problem.P
         removed_pickups = [
             v for v in pickup_vertices if v not in destroyed_solution.order
         ]
 
-        # removed_deliveries = [v + N for v in removed_pickups]
-        # missing_vertices = removed_pickups + removed_deliveries
-
         def pickup_vertex(v: int) -> int:
             return v if v <= N else v - N
 
-        def slice_and_insert(input_list: List[int], sth: int, ind: int) -> List[int]:
-            return input_list[:ind] + [sth] + input_list[ind:]
-
-        def evaluate_route_cost(route_order: List[int]) -> int:
-            cost = 0
-            prev = 0  # we always start at the depot
-            for v in route_order[1:]:
-                cost += C[prev][v]
-                prev = v
-            return cost
-
         # Try all possible insertion orders for the removed vertices
         # and choose the order that results in the least cost solution
-        # (different from paper which specifies "insertion based on removal order")
         partial_order = destroyed_solution.order
         insertion_orders = permute(removed_pickups)
+        best_solution = None
         best_total_cost = None
-        best_total_order = None
-        best_stack_assignment = None
-        insertion_order = random.choices(insertion_orders, k=1)[0]
 
         for insertion_order in insertion_orders:
             # Try this insertion order and perform least cost insertion
             # for the vertices. Try to insert the pickup vertex anywhere on any
             # stack with capacity then try to insert the delivery vertex
-            # in a feasible location (without violated LIFO constraints)
+            # in a feasible location (without violating LIFO constraints)
             stack_assignment = deepcopy(destroyed_solution.stack_assignment)
             extended_partial_order = list(partial_order)
             for vertex in insertion_order:
+                item = items[vertex]
                 # order to be updated for after every request inserted
                 # in the current insert order
                 best_extended_cost = None
                 best_extended_partial_order = None
                 best_extended_stack_assignment = None
 
+                # Generic support for 1D and 2D items
+                possible_stack_indices = [
+                    i for i in M if compartments[i].is_item_compatible(item)
+                ]
                 # Try a stack assignment
-                for stack_idx in M:
+                for stack_idx in possible_stack_indices:
                     # Try a pos in the visiting order for the pickup vertex
                     for pick_pos in range(1, len(extended_partial_order) + 1):
                         # extend the extended order with the pick
@@ -290,10 +500,11 @@ class LNS:
                                     i + N for i in related_vertices
                                 ]
 
-                                stack = self.problem.vehicle.compartments[stack_idx]
+                                stack = compartments[stack_idx]
                                 collected_demand = 0
                                 for v in ed_order[1:]:
-                                    demand = items[pickup_vertex(v)].length
+                                    # Generic support for 1D and 2D items
+                                    demand = stack.demand_for_item(item)
                                     if v in related_vertices:
                                         collected_demand += demand
                                     elif v in corresponding_deliveres:
@@ -307,67 +518,61 @@ class LNS:
                                         feasible = False
                                         break
 
-                            if feasible:
-                                # feasible solution found!
-                                # check detour and consider least cost detour
-                                e_cost = evaluate_route_cost(ep_order)
-                                if (
-                                    best_extended_cost is None
-                                    or best_extended_cost > e_cost
-                                ):
-                                    best_extended_cost = e_cost
-                                    # least cost detour found, update extended order
-                                    # with new request
-                                    best_extended_partial_order = ed_order
-                                    best_extended_stack_assignment = ep_stack_assign
+                                if feasible:
+                                    # feasible partial solution found!
+                                    solution = Solution(
+                                        items,
+                                        ep_order,
+                                        ep_stack_assign,
+                                        self.problem.vehicle,
+                                        is_partial=True,
+                                    )
+                                    # check detour and consider least cost detour
+                                    e_cost = self.evaluate_solution(solution)
+                                    if (
+                                        best_extended_cost is None
+                                        or best_extended_cost > e_cost
+                                    ):
+                                        best_extended_cost = e_cost
+                                        # least cost detour found, update extended order
+                                        # with new request
+                                        best_extended_partial_order = ed_order
+                                        best_extended_stack_assignment = ep_stack_assign
 
                             del_pos += 1
 
+                assert best_extended_partial_order, "A solution must be repairable!"
                 # Update the partial order and the stack assignment for the
                 # newly-inserted request
                 extended_partial_order = best_extended_partial_order
                 stack_assignment = best_extended_stack_assignment
 
             # Check if this insertion order contributes to the lowest cost total order
-            total_cost = evaluate_route_cost(extended_partial_order)
-            if best_total_cost is None or best_total_cost > total_cost:
+            solution = Solution(
+                items, extended_partial_order, stack_assignment, self.problem.vehicle
+            )
+            total_cost = self.evaluate_solution(solution)
+            if best_solution is None or best_total_cost > total_cost:
                 best_total_cost = total_cost
-                best_total_order = extended_partial_order
-                best_stack_assignment = best_extended_stack_assignment
+                best_solution = solution
 
-        return Solution(
-            items, best_total_order, best_stack_assignment, self.problem.vehicle
-        )
+        return best_solution
 
-    def least_cost_repair(self, destroyed_solution: Solution) -> Solution:
-        N, V, P, D, C, M = self.problem.problem_vars()
+    def random_least_cost_repair(self, destroyed_solution: Solution) -> Solution:
+        """Least cost repair for a single randomly-chosen insertion order."""
+        N, V, P, D, C, M = self.problem.problem_data()
         items = self.problem.items
+        compartments = self.problem.vehicle.compartments
 
         pickup_vertices = self.problem.P
         removed_pickups = [
             v for v in pickup_vertices if v not in destroyed_solution.order
         ]
 
-        # removed_deliveries = [v + N for v in removed_pickups]
-        # missing_vertices = removed_pickups + removed_deliveries
-
         def pickup_vertex(v: int) -> int:
             return v if v <= N else v - N
 
-        def slice_and_insert(input_list: List[int], sth: int, ind: int) -> List[int]:
-            return input_list[:ind] + [sth] + input_list[ind:]
-
-        def evaluate_route_cost(route_order: List[int]) -> int:
-            cost = 0
-            prev = 0  # we always start at the depot
-            for v in route_order[1:]:
-                cost += C[prev][v]
-                prev = v
-            return cost
-
-        # Try all possible insertion orders for the removed vertices
-        # and choose the order that results in the least cost solution
-        # (different from paper which specifies "insertion based on removal order")
+        # Try a random insertion order for removed vertices
         partial_order = destroyed_solution.order
         insertion_orders = permute(removed_pickups)
         insertion_order = random.choices(insertion_orders, k=1)[0]
@@ -375,18 +580,23 @@ class LNS:
         # Try this insertion order and perform least cost insertion
         # for the vertices. Try to insert the pickup vertex anywhere on any
         # stack with capacity then try to insert the delivery vertex
-        # in a feasible location (without violated LIFO constraints)
+        # in a feasible location (without violating LIFO constraints)
         stack_assignment = deepcopy(destroyed_solution.stack_assignment)
         extended_partial_order = list(partial_order)
         for vertex in insertion_order:
+            item = items[vertex]
             # order to be updated for after every request inserted
             # in the current insert order
             best_extended_cost = None
             best_extended_partial_order = None
             best_extended_stack_assignment = None
 
+            # Generic support for 1D and 2D items
+            possible_stack_indices = [
+                i for i in M if compartments[i].is_item_compatible(item)
+            ]
             # Try a stack assignment
-            for stack_idx in M:
+            for stack_idx in possible_stack_indices:
                 # Try a pos in the visiting order for the pickup vertex
                 for pick_pos in range(1, len(extended_partial_order) + 1):
                     # extend the extended order with the pick
@@ -439,10 +649,11 @@ class LNS:
                             related_vertices = ep_stack_assign[stack_idx]
                             corresponding_deliveres = [i + N for i in related_vertices]
 
-                            stack = self.problem.vehicle.compartments[stack_idx]
+                            stack = compartments[stack_idx]
                             collected_demand = 0
                             for v in ed_order[1:]:
-                                demand = items[pickup_vertex(v)].length
+                                # Generic support for 1D and 2D items
+                                demand = stack.demand_for_item(item)
                                 if v in related_vertices:
                                     collected_demand += demand
                                 elif v in corresponding_deliveres:
@@ -457,9 +668,16 @@ class LNS:
                                     break
 
                         if feasible:
-                            # feasible solution found!
+                            # feasible partial solution found!
+                            solution = Solution(
+                                items,
+                                ep_order,
+                                ep_stack_assign,
+                                self.problem.vehicle,
+                                is_partial=True,
+                            )
                             # check detour and consider least cost detour
-                            e_cost = evaluate_route_cost(ep_order)
+                            e_cost = self.evaluate_solution(solution)
                             if (
                                 best_extended_cost is None
                                 or best_extended_cost > e_cost
@@ -472,6 +690,7 @@ class LNS:
 
                         del_pos += 1
 
+            assert best_extended_partial_order, "A solution must be repairable!"
             # Update the partial order and the stack assignment for the
             # newly-inserted request
             extended_partial_order = best_extended_partial_order
@@ -482,19 +701,38 @@ class LNS:
         )
 
 
-class PLNS(LNS):
-    def repair(self, destroyed_solution: Solution):
-        parallel_operator = MultiRepairOperator(destroyed_solution, self.problem)
-        return parallel_operator.repair()
+class DestroyOperator(ABC):
+    """Abstract base class for a destroy operator."""
+
+    def __init__(
+        self, problem: Problem, solution: Solution, destruction_degree: int
+    ) -> None:
+        self.problem = problem
+        self.solution = solution
+        self.nb_request_to_remove = destruction_degree
+
+    @abstractmethod
+    def destroy(self) -> Solution:
+        "Main method of the DestroyOperator. Returns a parital solution."
 
 
-class MultiRepairOperator:
-    def __init__(self, destroyed_solution: Solution, problem: Problem) -> None:
+class RepairOperator(ABC):
+    """Abstract base class for a repair operator."""
+
+    def __init__(
+        self,
+        problem: Problem,
+        destroyed_solution: Solution,
+        optimization_objective: OptimizationObjective = (
+            OptimizationObjective.CHEAPEST_ROUTE
+        ),
+    ) -> None:
         self.problem = problem
         self.destroyed_solution = destroyed_solution
         self.stack_assignment = destroyed_solution.stack_assignment
+        self.optimization_objective = optimization_objective
 
-        N, V, P, D, C, M = self.problem.problem_vars()
+        P = self.problem.P
         self.removed_pickups = [v for v in P if v not in destroyed_solution.order]
 
         self.insertion_orders = permute(self.removed_pickups)
@@ -511,55 +749,36 @@ class MultiRepairOperator:
         N = self.problem.N
         return v if v <= N else v - N
 
-    def evaluate_route_cost(self, route_order: List[int]) -> int:
-        C = self.problem.C
-        cost = 0
-        prev = 0  # we always start at the depot
-        for v in route_order[1:]:
-            cost += C[prev][v]
-            prev = v
-        return cost
+    def evaluate_solution(self, solution: Solution) -> int:
+        return self.problem.evaluate_solution(solution, self.optimization_objective)
 
-    def repair(self) -> Solution:
-        q = mp.Queue()
-        best_solution = None
-        best_objective = None
+    def single_order_repair(self, insertion_order: List[int]) -> Solution:
+        """Performs least cost insetion for the `insetion_order`."""
+        N, _, _, _, _, M = self.problem.problem_data()
+        items = self.items
+        compartments = self.problem.vehicle.compartments
 
-        processes = (
-            []
-        )  # using a pool could actually be better because spawinging is expensive
-        for order in self.insertion_orders:
-            process = mp.Process(target=self.single_order_repair, args=(order, q))
-            processes.append(process)
-            process.start()
-
-            sol = q.get()
-            obj = self.problem.evaluate_solution(sol)
-            if not best_solution or obj < best_objective:
-                best_solution = sol
-                best_objective = obj
-
-        for process in processes:
-            process.join()
-
-        print(f"one iteration joining w / {best_objective}")
-
-        return best_solution
-
-    def single_order_repair(self, insertion_order, q):
-        N, V, P, D, C, M = self.problem.problem_vars()
+        # stack assingment to be extended after every request inserted
         stack_assignment = deepcopy(self.stack_assignment)
-        extended_partial_order = deepcopy(self.destroyed_solution.order)
+        # order to be updated after every request inserted
+        extended_partial_order = self.partial_order
 
+        # Try to insert the pickup vertex anywhere on any
+        # stack with capacity then try to insert the delivery vertex
+        # in a feasible location (without violating LIFO constraints)
         for vertex in insertion_order:
-            # order to be updated for after every request inserted
-            # in the current insert order
+            item = items[vertex]
+            # best cost and order for the current vertex
             best_extended_cost = None
             best_extended_partial_order = None
             best_extended_stack_assignment = None
 
+            # Generic support for 1D and 2D items
+            possible_stack_indices = [
+                i for i in M if compartments[i].is_item_compatible(item)
+            ]
             # Try a stack assignment
-            for stack_idx in M:
+            for stack_idx in possible_stack_indices:
                 # Try a pos in the visiting order for the pickup vertex
                 for pick_pos in range(1, len(extended_partial_order) + 1):
                     # extend the extended order with the pick
@@ -615,10 +834,11 @@ class MultiRepairOperator:
                             related_vertices = ep_stack_assign[stack_idx]
                             corresponding_deliveres = [i + N for i in related_vertices]
 
-                            stack = self.problem.vehicle.compartments[stack_idx]
+                            stack = compartments[stack_idx]
                             collected_demand = 0
                             for v in ed_order[1:]:
-                                demand = self.items[self.pickup_vertex(v)].length
+                                # Generic support for 1D and 2D items
+                                demand = stack.demand_for_item(item)
                                 if v in related_vertices:
                                     collected_demand += demand
                                 elif v in corresponding_deliveres:
@@ -633,9 +853,16 @@ class MultiRepairOperator:
                                     break
 
                         if feasible:
-                            # feasible solution found!
+                            # feasible partial solution found!
                             # check detour and consider least cost detour
-                            e_cost = self.evaluate_route_cost(ed_order)
+                            solution = Solution(
+                                self.items,
+                                ed_order,
+                                ep_stack_assign,
+                                self.problem.vehicle,
+                                is_partial=True,
+                            )
+                            e_cost = self.evaluate_solution(solution)
                             if (
                                 best_extended_cost is None
                                 or best_extended_cost > e_cost
@@ -648,18 +875,86 @@ class MultiRepairOperator:
 
                         del_pos += 1
 
+            assert best_extended_partial_order, "A solution must be repairable!"
             # Update the partial order and the stack assignment for the
             # newly-inserted request
             extended_partial_order = best_extended_partial_order
             stack_assignment = best_extended_stack_assignment
 
-        solution = Solution(
+        return Solution(
             self.items, extended_partial_order, stack_assignment, self.problem.vehicle
         )
 
-        # Add the solution to the multiprocessing queue
-        # print(f"Process {os.getpid()} adding its sol to q w/ cost {best_extended_cost} but {self.problem.evaluate_solution(solution)}")
+    @abstractmethod
+    def repair(self) -> Solution:
+        """Main method of the repair operator. Returns a full feasible solution."""
+
+
+class SingleOrderLeastCostRepairOperator(RepairOperator):
+    """
+    Least Cost repair operator based on a single insertion order. In case an insertion
+    order is specified upon initialization, the order is used. Otherwise, an
+    arbitrary insetion order is selected.
+    """
+
+    def __init__(
+        self,
+        problem: Problem,
+        destroyed_solution: Solution,
+        insetion_order: List[int] = [],
+        optimization_objective: OptimizationObjective = (
+            OptimizationObjective.CHEAPEST_ROUTE
+        ),
+    ) -> None:
+        super().__init__(problem, destroyed_solution, optimization_objective)
+        self.insertion_order = insetion_order or random.choice(self.insertion_orders)
+
+    def repair(self) -> Solution:
+        return self.single_order_repair(self.insertion_order)
+
+
+class ParallelOptimalLeastCostRepairOperator(RepairOperator):
+    """
+    Optimal Least Cost repair operator based on multiple parallel insetion orders.
+    Each possible insertion order is solved indepently in a process and the best
+    solution with the best insetion cost is selected.
+    """
+
+    def repair(self) -> Solution:
+        q: mp.Queue = mp.Queue()
+        best_solution = None
+        best_objective = None
+
+        processes = (
+            []
+        )  # using a pool could actually be better because spawinging is expensive
+        for order in self.insertion_orders:
+            process = mp.Process(target=self.single_order_repair, args=(order, q))
+            processes.append(process)
+            process.start()
+
+            sol = q.get()
+            obj = self.evaluate_solution(sol)
+            if not best_solution or obj < best_objective:
+                best_solution = sol
+                best_objective = obj
+
+        for process in processes:
+            process.join()
+
+        return best_solution
+
+    def single_order_repair(self, insertion_order, q):
+        solution = super().single_order_repair(insertion_order)
         q.put(solution)
+
+
+class PLNS(LNS):
+    def repair(self, destroyed_solution: Solution):
+        parallel_operator = ParallelOptimalLeastCostRepairOperator(
+            self.problem, destroyed_solution, self.optimization_objective
+        )
+        return parallel_operator.repair()
 
 
 def permute(input: List[Any]) -> List[List[Any]]:

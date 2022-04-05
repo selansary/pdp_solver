@@ -1,0 +1,96 @@
+@startuml some
+' https://github.com/Drakemor/RedDress-PlantUML
+
+!define FONTNAME "Helvetica"
+!define MONOSPACEFONTNAME "Inconsolata"
+!define FONTSIZE 11
+!define ACCENT 64A0C8
+!define ACCENT2 FFAB85
+!define PRIMARY ebeeee
+!define SECONDARY 7f8a8c
+!define BORDERCOLOR 005293
+' !define BOXBG 293b40
+!define BOXBG BORDERCOLOR
+
+' !define FONTNAME "Helvetica"
+' !define MONOSPACEFONTNAME "Inconsolata"
+' !define FONTSIZE 11
+' !define ACCENT 93e2cb
+' !define ACCENT2 FFAB85
+' !define PRIMARY ebeeee
+' !define SECONDARY 7f8a8c
+' !define BORDERCOLOR 213033
+' ' !define BOXBG 293b40
+' !define BOXBG BORDERCOLOR
+
+skinparam {
+  DefaultFontColor BORDERCOLOR
+  DefaultFontName FONTNAME
+  DefaultFontSize FONTSIZE
+  DefaultMonospacedFontName MONOSPACEFONTNAME
+  BackgroundColor fff
+  Shadowing false
+
+  StereotypeCBackgroundColor ACCENT
+  StereotypeABackgroundColor ACCENT2
+  StereotypeEBackgroundColor ACCENT2
+  StereotypeIBackgroundColor ACCENT2
+  StereotypeNBackgroundColor ACCENT2
+  circledCharacter {
+    radius 8
+    fontSize FONTSIZE
+  }
+  class {
+    headerBackgroundColor BOXBG
+    fontColor PRIMARY
+
+    backgroundColor PRIMARY
+    borderColor BORDERCOLOR
+
+    arrowColor BORDERCOLOR
+    arrowFontColor BORDERCOLOR
+    arrowFontSize FONTSIZE
+
+    attributeFontColor BOXBG
+    attributeFontSize FONTSIZE
+    attributeIconSize FONTSIZE
+  }
+  activity {
+    borderColor BORDERCOLOR
+    backgroundColor BOXBG
+    fontColor PRIMARY
+  }
+  actor {
+    fontColor BORDERCOLOR
+    borderColor BORDERCOLOR
+    backgroundColor BOXBG
+  }
+  participant {
+    borderColor BORDERCOLOR
+    backgroundColor BOXBG
+    fontColor PRIMARY
+  }
+  state {
+    fontColor BORDERCOLOR
+    backgroundColor PRIMARY
+    borderColor BORDERCOLOR
+    startColor BOXBG
+    endColor BOXBG
+    backgroundColor<<Warning>> ACCENT
+  }
+  note {
+    fontColor BORDERCOLOR
+    backgroundColor PRIMARY
+    borderColor BORDERCOLOR
+  }
+  activityDiamond {
+    fontColor BORDERCOLOR
+    backgroundColor PRIMARY
+    borderColor BORDERCOLOR
+  }
+  SequenceLifeLineBackgroundColor SECONDARY
+  SequenceLifeLineBorderColor SECONDARY
+
+}
+
+@enduml

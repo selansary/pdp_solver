@@ -404,7 +404,8 @@ class MultiRepairOperator:
 
         for vertex in insertion_order:
             compatible_stacks = [
-                self.problem.compartment_capabilities[k][vertex] for k in M
+                k for k in M if
+                self.problem.compartment_capabilities[k][vertex] == 1
             ]
             # order to be updated for after every request inserted
             # in the current insert order

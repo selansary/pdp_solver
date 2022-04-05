@@ -1,7 +1,7 @@
 from copy import copy
 from typing import Dict, List, Tuple
 
-from . import Item, TwoDItem, Vehicle
+from . import Item, Vehicle
 
 
 class Solution:
@@ -62,17 +62,8 @@ class Solution:
                 stack_idx = self.item_assignment[pick_vertex]
                 item = self.items[pick_vertex]
                 comp = self.vehicle.compartments[stack_idx]
-
-                if isinstance(item, TwoDItem):
-                    if comp.length == item.length:
-                        demand = item.width
-                    else:
-                        demand = item.length
-                else:
-                    demand = item.length
-
-                if not is_pickup_vertex(vertex):
-                    demand = -1 * demand
+                # Generic 1D / 2D items support
+                demand = comp.demand_for_item(item)
 
                 # update state with demand picked / delivered at the vertex
                 state[stack_idx] += demand

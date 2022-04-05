@@ -5,7 +5,7 @@ import timeit
 from gurobipy import GRB
 from prettytable import PrettyTable
 
-from core import LNS, Compartment, Item, Problem, Vehicle
+from core import LNS, Compartment, Item, Problem, Vehicle, PLNS
 
 
 def print_solution(optimized_model):
@@ -30,7 +30,7 @@ def main():
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
-    # possible_time_limits = [(1, 10)]
+    possible_time_limits = [(1, 10)]
 
     results = []
     for nb_items in possible_nb_items:
@@ -49,7 +49,7 @@ def main():
 
                 # Presolve
                 s_time = timeit.default_timer()
-                pdp.presolve(time_limit=presolve_time)
+                pdp.solve(time_limit=presolve_time)
                 presolve_delta = timeit.default_timer() - s_time
                 sol = pdp.extract_solution()
                 presolve_obj = pdp.evaluate_solution(sol)
@@ -57,7 +57,7 @@ def main():
                 print(f"Presolve Solution cost: {presolve_obj}")
 
                 # Apply LNS algorithm
-                solver = LNS(pdp, max_iteration=1000, time_limit=lns_time)
+                solver = PLNS(pdp, max_iteration=1000, time_limit=lns_time)
                 start_time = time.time()
                 s_time = timeit.default_timer()
                 best_sol = solver.search(sol)
