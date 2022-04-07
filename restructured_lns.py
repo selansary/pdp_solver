@@ -16,6 +16,7 @@ from core import (
     TwoDimensionalItem,
     TwoDimensionalProblem,
     Vehicle,
+    DestructionDegreeCriterion
 )
 
 
@@ -102,7 +103,7 @@ def run_2d():
         TwoDimensionalItem(600, 400),
         TwoDimensionalItem(300, 200),
     ]
-    possible_nb_items = [10]
+    possible_nb_items = [15]
     possible_nb_compartments = [5]
 
     total_limits = [3, 5]
@@ -110,7 +111,7 @@ def run_2d():
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
-    possible_time_limits = [(5, 15)]
+    possible_time_limits = [(1, 3)]
     # possible_time_limits = [(1, 30), (15, 15), (30, 0)]
 
     results = []
@@ -147,6 +148,7 @@ def run_2d():
 
                 # Apply LNS algorithm
                 solver = PLNS(pdp, sol, time_limit=lns_time)
+                # solver.set_destruction_degree_criterion(DestructionDegreeCriterion.GRADUALLY_DECREASING)
                 start_time = time.time()
                 s_time = timeit.default_timer()
                 best_sol = solver.search()
@@ -155,7 +157,6 @@ def run_2d():
                 delta = time.time() - start_time
                 lns_obj = pdp.evaluate_solution(best_sol)
                 print(f"LNS Solution cost: {lns_obj} in {delta}")
-                # print(items)
                 # print(best_sol)
 
                 result = dict(

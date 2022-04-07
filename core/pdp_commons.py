@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from typing import List
 from enum import Enum, auto
+from typing import List
 
 
 @dataclass
@@ -36,7 +36,7 @@ class TwoDimensionalCompartment(Compartment):
 
     def is_item_compatible(self, item: Item) -> bool:
         if not isinstance(item, TwoDimensionalItem):
-           raise ValueError("Incompatible 1D Item with 2D Compartment.")
+            raise ValueError("Incompatible 1D Item with 2D Compartment.")
 
         if item.length == self.length:
             return True
@@ -54,13 +54,12 @@ class TwoDimensionalCompartment(Compartment):
         return item.length
 
 
-
-
 @dataclass
 class Vehicle:
     compartments: List[Compartment]
 
+
 class OptimizationObjective(Enum):
-    CHEAPEST_ROUTE =  auto()
-    LEAST_ROTATION =  auto()
-    CHEAPEST_ROUTE_LEAST_ROTATION =  auto()
+    CHEAPEST_ROUTE = auto()
+    LEAST_ROTATION = auto()
+    CHEAPEST_ROUTE_LEAST_ROTATION = auto()
