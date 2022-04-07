@@ -10,14 +10,7 @@ from typing import Any, Callable, List, Optional
 
 import numpy as np
 
-from . import (
-    OptimizationObjective,
-    Problem,
-    Solution,
-    TwoDimensionalCompartment,
-    TwoDimensionalProblem,
-    Vehicle,
-)
+from . import OptimizationObjective, Problem, Solution
 
 CPU_COUNT = mp.cpu_count()
 
@@ -721,7 +714,7 @@ class PLNS(LNS):
         )
         self.processing_pool = self.init_processing_pool()
 
-    def init_processing_pool(self) -> mp.pool.Pool:
+    def init_processing_pool(self) -> "mp.pool.Pool":
         print(f"Parallel LNS initialized with {CPU_COUNT} processes")
         return mp.Pool(CPU_COUNT)
 
@@ -740,7 +733,7 @@ class PLNS(LNS):
 
     def repair(self, destroyed_solution: Solution) -> Solution:
         """Parallel Best-effort repair for the destroyed solution."""
-
+        # Get all possible insertion orders for missing vertices
         arbitrary_repair_operator = SingleOrderLeastCostRepairOperator(
             self.problem,
             destroyed_solution,
@@ -748,27 +741,16 @@ class PLNS(LNS):
         )
         insertion_orders = arbitrary_repair_operator.insertion_orders
 
-        def unwrap_problem(problem: Problem):
-            # needed for pickling
-            items = list(self.problem.items.values())
-            vehicle = Vehicle(
-                [
-                    TwoDimensionalCompartment(comp.depth, comp.length)
-                    for comp in problem.vehicle.compartments
-                ]
-            )
-            return items, vehicle, deepcopy(problem.C)
-
+        # Distribute insertion orders on parallel processes
         best_solution = None
-        op_objective = self.optimization_objective
         async_results = [
             self.processing_pool.apply_async(
                 process_repair,
                 args=(
-                    *unwrap_problem(self.problem),
+                    self.problem,
                     destroyed_solution,
                     insertion_order,
-                    op_objective,
+                    self.optimization_objective,
                 ),
             )
             for insertion_order in insertion_orders
@@ -805,18 +787,7 @@ class PLNS(LNS):
         )
         insertion_orders = arbitrary_repair_operator.insertion_orders
 
-        def unwrap_problem(problem: Problem):
-            items = list(self.problem.items.values())
-            vehicle = Vehicle(
-                [
-                    TwoDimensionalCompartment(comp.depth, comp.length)
-                    for comp in problem.vehicle.compartments
-                ]
-            )
-            return items, vehicle, deepcopy(problem.C)
-
         best_solution = None
-        op_objective = self.optimization_objective
         nb_processes = mp.cpu_count()
         print(
             f"It: {self.iteration} Initializing {nb_processes} processes for"
@@ -827,10 +798,10 @@ class PLNS(LNS):
                 pool.apply_async(
                     process_repair,
                     args=(
-                        *unwrap_problem(self.problem),
+                        self.problem,
                         destroyed_solution,
                         order,
-                        op_objective,
+                        self.optimization_objective,
                     ),
                 )
                 for order in insertion_orders
@@ -850,19 +821,16 @@ class PLNS(LNS):
 
 
 def process_repair(
-    items,
-    vehicle,
-    distance_matrix,
-    destroyed_solution,
-    insertion_order,
-    optimization_objective,
+    problem: Problem,
+    destroyed_solution: Solution,
+    insertion_order: List[int],
+    optimization_objective: OptimizationObjective,
 ) -> Solution:
-    problem = TwoDimensionalProblem(items, vehicle, distance_matrix)
     operator = SingleOrderLeastCostRepairOperator(
         problem, destroyed_solution, insertion_order, optimization_objective
     )
-    sol = operator.repair()
-    return sol
+    solution = operator.repair()
+    return solution
 
 
 def permute(input: List[Any]) -> List[List[Any]]:

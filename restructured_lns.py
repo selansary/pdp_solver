@@ -10,13 +10,15 @@ from core import (
     LNS,
     PLNS,
     Compartment,
+    DestructionDegreeCriterion,
     Item,
+    ModelledOneDimensionalProblem,
+    ModelledTwoDimensionalProblem,
     Problem,
     TwoDimensionalCompartment,
     TwoDimensionalItem,
     TwoDimensionalProblem,
     Vehicle,
-    DestructionDegreeCriterion
 )
 
 
@@ -37,7 +39,7 @@ def run_1d():
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
-    possible_time_limits = [(5, 15)]
+    possible_time_limits = [(1, 3)]
 
     results = []
     for nb_items in possible_nb_items:
@@ -49,21 +51,22 @@ def run_1d():
                 )
 
                 # Define the problem
-                pdp = Problem(items, vehicle=vehicle)
-                pdp.create_model()
-                pdp.apply_constraints()
-                pdp.set_model_objective()
+                modelled_pdp = ModelledOneDimensionalProblem(items, vehicle=vehicle)
+                modelled_pdp.create_model()
+                modelled_pdp.apply_constraints()
+                modelled_pdp.set_model_objective()
 
                 # Presolve
                 s_time = timeit.default_timer()
-                pdp.solve(time_limit=presolve_time)
+                modelled_pdp.solve(time_limit=presolve_time)
                 presolve_delta = timeit.default_timer() - s_time
-                sol = pdp.extract_solution()
-                presolve_obj = pdp.evaluate_solution(sol)
+                sol = modelled_pdp.extract_solution()
+                presolve_obj = modelled_pdp.evaluate_solution(sol)
                 # print(sol)
                 print(f"Presolve Solution cost: {presolve_obj}")
 
                 # Apply LNS algorithm
+                pdp = Problem(items, vehicle, modelled_pdp.C)
                 solver = PLNS(pdp, sol, time_limit=lns_time)
                 start_time = time.time()
                 s_time = timeit.default_timer()
@@ -132,21 +135,22 @@ def run_2d():
                 )
 
                 # Define the problem
-                pdp = TwoDimensionalProblem(items, vehicle)
-                pdp.create_model()
-                pdp.apply_constraints()
-                pdp.set_model_objective()
+                modelled_pdp = ModelledTwoDimensionalProblem(items, vehicle)
+                modelled_pdp.create_model()
+                modelled_pdp.apply_constraints()
+                modelled_pdp.set_model_objective()
 
                 # Presolve
                 s_time = timeit.default_timer()
-                pdp.solve(time_limit=presolve_time)
+                modelled_pdp.solve(time_limit=presolve_time)
                 presolve_delta = timeit.default_timer() - s_time
-                sol = pdp.extract_solution()
-                presolve_obj = pdp.evaluate_solution(sol)
+                sol = modelled_pdp.extract_solution()
+                presolve_obj = modelled_pdp.evaluate_solution(sol)
                 # print(sol)
                 print(f"Presolve Solution cost: {presolve_obj}")
 
                 # Apply LNS algorithm
+                pdp = TwoDimensionalProblem(items, vehicle, modelled_pdp.C)
                 solver = PLNS(pdp, sol, time_limit=lns_time)
                 # solver.set_destruction_degree_criterion(DestructionDegreeCriterion.GRADUALLY_DECREASING)
                 start_time = time.time()
@@ -182,5 +186,5 @@ def run_2d():
 
 
 if __name__ == "__main__":
-    # run_1d()
+    run_1d()
     run_2d()

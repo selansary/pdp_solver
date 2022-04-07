@@ -13,12 +13,10 @@ from . import (
 )
 
 
-class BaseProblem:
+class Problem:
     """
     The base Single Vehicle Pickup and Delivery Problem with Multiple Compartments.
-    The model for this base problem doesn't include loading constraints; for PDPs with
-    stacking constraints, use `Problem` for 1D items or `TwoDimensionalProblem` for
-    2D items.
+    The generic base problem, independent of the Model and its constraints.
     """
 
     def __init__(
@@ -57,11 +55,122 @@ class BaseProblem:
         ]
 
         self.name = name
+
+    def problem_data(self):
+        """Return problem data: N, V, P, D, C, M."""
+        return self.N, self.V, self.P, self.D, self.C, self.M
+
+    def evaluate_solution(
+        self,
+        solution: Solution,
+        optimization_objective: OptimizationObjective = (
+            OptimizationObjective.CHEAPEST_ROUTE
+        ),
+    ) -> int:
+        """
+        Return the objective value of the solution. The default objective minimizes
+        the route cost.
+
+        Applicable objectives for the base problem:
+            - `OptimizationObjective.CHEAPEST_ROUTE`
+        """
+        if optimization_objective != OptimizationObjective.CHEAPEST_ROUTE:
+            raise ValueError("This objective is not applicable to this problem.")
+
+        cost = 0
+        prev = 0  # we always start at the depot
+        order = solution.order
+        for vertex in order[1:]:
+            cost += self.C[prev][vertex]
+            prev = vertex
+        return cost
+
+
+class TwoDimensionalProblem(Problem):
+    """
+    The base Single Vehicle Pickup and Delivery Problem with Multiple 2D Compartments.
+    The generic extended 2D base problem, independent of the Model and its constraints.
+    """
+
+    def __init__(
+        self,
+        items: List[TwoDimensionalItem],
+        vehicle: Vehicle,
+        distance_matrix: List[List[int]] = [],
+        name: str = "Base-2D-PDP",
+    ) -> None:
+        super().__init__(items, vehicle, distance_matrix, name)
+
+    def evaluate_solution(
+        self,
+        solution: Solution,
+        optimization_objective: OptimizationObjective = (
+            OptimizationObjective.CHEAPEST_ROUTE
+        ),
+    ) -> int:
+        """
+        Return the objective value of the solution. The default objective minimizes
+        the route cost.
+
+        Applicable objectives for the problem:
+            - `OptimizationObjective.CHEAPEST_ROUTE`
+            - `OptimizationObjective.LEAST_ROTATION`
+            - `OptimizationObjective.CHEAPEST_ROUTE_LEAST_ROTATION`
+        """
+
+        def is_item_rotated(item_vertex: int, stack_idx: int) -> bool:
+            item = self.items[item_vertex]
+            stack = self.vehicle.compartments[stack_idx]
+            return item.width == stack.length
+
+        def evaluate_rotation_cost() -> int:
+            item_assignemt = solution.item_assignment
+            rotated = [is_item_rotated(i, item_assignemt[i]) for i in self.P]
+            return sum(rotated)
+
+        objective_val = 0
+        if optimization_objective == OptimizationObjective.CHEAPEST_ROUTE:
+            objective_val = super().evaluate_solution(solution)
+        elif optimization_objective == OptimizationObjective.LEAST_ROTATION:
+            objective_val = evaluate_rotation_cost()
+        elif (
+            optimization_objective
+            == OptimizationObjective.CHEAPEST_ROUTE_LEAST_ROTATION
+        ):
+            objective_val = (
+                super().evaluate_solution(solution) + evaluate_rotation_cost()
+            )
+        else:
+            raise ValueError("This objective is not applicable to this problem.")
+
+        return objective_val
+
+
+class ModelledBaseProblem(Problem):
+    """
+    The modelled base Single Vehicle Pickup and Delivery Problem with Multiple
+    Compartments.
+
+    Extends the base `Problem` with the Gurobi model and its base constraints.
+
+    The model for this base problem doesn't include loading constraints;
+    for PDPs with stacking constraints, use `ModelledProblem` for 1D items or
+    `ModelledTwoDimensionalProblem` for
+    2D items.
+    """
+
+    def __init__(
+        self,
+        items: List[Item],
+        vehicle: Vehicle,
+        distance_matrix: List[List[int]] = [],
+        name: str = "Base-PDP-Model",
+    ) -> None:
+        super().__init__(items, vehicle, distance_matrix, name)
+        # Extend with model and decision variables
         self.model, self.data = self.create_model()
 
-    def create_model(
-        self
-    ) -> Tuple[gp.Model, Dict[str, Dict[Tuple[Any, ...], gp.Var]]]:
+    def create_model(self) -> Tuple[gp.Model, Dict[str, Dict[Tuple[Any, ...], gp.Var]]]:
         """Initialize a gurobi model for the problem."""
         model = gp.Model(self.name)
         V = self.V
@@ -89,10 +198,6 @@ class BaseProblem:
 
         data = dict(x=x, y=y, u=u, s=s)
         return model, data
-
-    def problem_data(self):
-        """Return problem data: N, V, P, D, C, M."""
-        return self.N, self.V, self.P, self.D, self.C, self.M
 
     def model_vars(self):
         """Return model data: x, y, u, s."""
@@ -233,37 +338,14 @@ class BaseProblem:
 
         return Solution(self.items, order, stack_assignment, self.vehicle)
 
-    def evaluate_solution(
-        self,
-        solution: Solution,
-        optimization_objective: OptimizationObjective = (
-            OptimizationObjective.CHEAPEST_ROUTE
-        ),
-    ) -> int:
-        """
-        Return the objective value of the solution. The default objective minimizes
-        the route cost.
 
-        Applicable objectives for the base problem:
-            - `OptimizationObjective.CHEAPEST_ROUTE`
-        """
-        if optimization_objective != OptimizationObjective.CHEAPEST_ROUTE:
-            raise ValueError("This objective is not applicable to this problem.")
-
-        cost = 0
-        prev = 0  # we always start at the depot
-        order = solution.order
-        for vertex in order[1:]:
-            cost += self.C[prev][vertex]
-            prev = vertex
-        return cost
-
-
-class Problem(BaseProblem):
+class ModelledOneDimensionalProblem(ModelledBaseProblem):
     """
-    The Single Vehicle Pickup and Delivery Problem with Multiple Stacked Compartments.
-    The problem extends the `BaseProblem` with loading consraints and supports only
-    1D Items.
+    The modelled Single Vehicle Pickup and Delivery Problem with Multiple Stacked
+    Compartments.
+
+    The problem extends the `ModelledBaseProblem` with loading consraints and
+    supports only 1D Items.
     """
 
     def __init__(
@@ -271,7 +353,7 @@ class Problem(BaseProblem):
         items: List[Item],
         vehicle: Vehicle,
         distance_matrix: List[List[int]] = [],
-        name: str = "PDPMS",
+        name: str = "PDPMS-Model",
     ) -> None:
         super().__init__(items, vehicle, distance_matrix, name)
 
@@ -299,10 +381,13 @@ class Problem(BaseProblem):
         )
 
 
-class TwoDimensionalProblem(BaseProblem):
+class ModelledTwoDimensionalProblem(ModelledBaseProblem, TwoDimensionalProblem):
     """
-    The Single Vehicle 2D Pickup and Delivery Problem with Multiple Stacked Compartments.
-    The problem extends the `BaseProblem` with loading consraints and supports 2D items.
+    The modelled Single Vehicle 2D Pickup and Delivery Problem with Multiple Stacked
+    Compartments.
+
+    The problem extends the `ModelledBaseProblem` with loading consraints and
+    supports 2D items.
     """
 
     def __init__(
@@ -310,7 +395,7 @@ class TwoDimensionalProblem(BaseProblem):
         items: List[TwoDimensionalItem],
         vehicle: Vehicle,
         distance_matrix: List[List[int]] = [],
-        name: str = "2DPDPMS",
+        name: str = "2DPDPMS-Model",
     ) -> None:
         super().__init__(items, vehicle, distance_matrix, name)
         # Extend with compartment capabilities to suport 2D items and compartments
@@ -331,9 +416,7 @@ class TwoDimensionalProblem(BaseProblem):
             for comp in self.vehicle.compartments
         ]
 
-    def create_model(
-        self
-    ) -> Tuple[gp.Model, Dict[str, Dict[Tuple[Any, ...], gp.Var]]]:
+    def create_model(self) -> Tuple[gp.Model, Dict[str, Dict[Tuple[Any, ...], gp.Var]]]:
         model, data = super().create_model()
 
         _, _, P, _, _, M = self.problem_data()
@@ -524,47 +607,3 @@ class TwoDimensionalProblem(BaseProblem):
             raise ValueError("This objective is not applicable to this problem.")
 
         self.model.setObjective(objective_expr)
-
-    def evaluate_solution(
-        self,
-        solution: Solution,
-        optimization_objective: OptimizationObjective = (
-            OptimizationObjective.CHEAPEST_ROUTE
-        ),
-    ) -> int:
-        """
-        Return the objective value of the solution. The default objective minimizes
-        the route cost.
-
-        Applicable objectives for the problem:
-            - `OptimizationObjective.CHEAPEST_ROUTE`
-            - `OptimizationObjective.LEAST_ROTATION`
-            - `OptimizationObjective.CHEAPEST_ROUTE_LEAST_ROTATION`
-        """
-
-        def is_item_rotated(item_vertex: int, stack_idx: int) -> bool:
-            item = self.items[item_vertex]
-            stack = self.vehicle.compartments[stack_idx]
-            return item.width == stack.length
-
-        def evaluate_rotation_cost() -> int:
-            item_assignemt = solution.item_assignment
-            rotated = [is_item_rotated(i, item_assignemt[i]) for i in self.P]
-            return sum(rotated)
-
-        objective_val = 0
-        if optimization_objective == OptimizationObjective.CHEAPEST_ROUTE:
-            objective_val = super().evaluate_solution(solution)
-        elif optimization_objective == OptimizationObjective.LEAST_ROTATION:
-            objective_val = evaluate_rotation_cost()
-        elif (
-            optimization_objective
-            == OptimizationObjective.CHEAPEST_ROUTE_LEAST_ROTATION
-        ):
-            objective_val = (
-                super().evaluate_solution(solution) + evaluate_rotation_cost()
-            )
-        else:
-            raise ValueError("This objective is not applicable to this problem.")
-
-        return objective_val
