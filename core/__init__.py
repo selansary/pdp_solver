@@ -9,14 +9,6 @@ from .pdp_commons import (
 )
 from .pdp_solution import Solution
 
-# from .pdp_problem import Problem, TwoDimensionalProblem
-# from .large_neighborhood_search import (
-#     AcceptanceCriterion,
-#     LNS,
-#     PLNS,
-#     SimulatedAnnealing,
-# )
-
 from .pdp_problem import (
     Problem,
     TwoDimensionalProblem,
@@ -33,6 +25,3 @@ from .lns import (
     DestructionDegreeCriterion,
     PLNS,
 )
-
-
-from .two_d_lns import TwoDLNS, TwoDPLNS
