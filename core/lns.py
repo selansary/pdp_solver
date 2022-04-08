@@ -724,15 +724,16 @@ class PLNS(LNS):
 
     def search(self) -> Solution:
         solution = super().search()
+        duration = time.time() - self.start_time
         print(
             f"Parallel LNS terminating w/ objective {self.evaluate_solution(solution)}"
-            f" in {self.iteration} iterations"
+            f" in {self.iteration} iterations in {duration} secs"
         )
         self.terminate_processing_pool()
         return solution
 
     def repair(self, destroyed_solution: Solution) -> Solution:
-        """Parallel Best-effort repair for the destroyed solution."""
+        """Parallel best-effort repair for the destroyed solution."""
         # Get all possible insertion orders for missing vertices
         arbitrary_repair_operator = SingleOrderLeastCostRepairOperator(
             self.problem,
@@ -742,7 +743,6 @@ class PLNS(LNS):
         insertion_orders = arbitrary_repair_operator.insertion_orders
 
         # Distribute insertion orders on parallel processes
-        best_solution = None
         async_results = [
             self.processing_pool.apply_async(
                 process_repair,
@@ -758,14 +758,14 @@ class PLNS(LNS):
 
         best_solution = async_results[0].get()
         best_objective = self.evaluate_solution(best_solution)
-        remaining_time = self.time_limit - (time.time() - self.start_time)
         for res in async_results:
             try:
-                sol = res.get(timeout=remaining_time)
+                sol = res.get(timeout=self.time_limit - (time.time() - self.start_time))
             except mp.TimeoutError:
                 print(
                     "Parallel LNS timed out, not all insertion orders could be tried."
                 )
+                break
             else:
                 obj = self.evaluate_solution(sol)
                 if obj < best_objective:
