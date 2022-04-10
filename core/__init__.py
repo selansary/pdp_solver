@@ -16,7 +16,14 @@ from .pdp_problem import (
     ModelledOneDimensionalProblem,
     ModelledTwoDimensionalProblem,
 )
+from .utils import permute, slice_and_insert
 
+
+from .operators import (
+    RandomDestroyOperator,
+    SingleOrderLeastCostRepairOperator,
+    ParallelOptimalLeastCostRepairOperator,
+)
 
 from .lns import (
     LNS,
