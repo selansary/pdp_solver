@@ -295,13 +295,12 @@ class ParallelOptimalLeastCostRepairOperator(LeastCostRepairOperator):
             processes.append(process)
             process.start()
 
+        for process in processes:
             sol = q.get()
             obj = self.evaluate_solution(sol)
             if not best_solution or obj < best_objective:
                 best_solution = sol
                 best_objective = obj
-
-        for process in processes:
             process.join()
 
         return best_solution
