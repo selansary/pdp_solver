@@ -20,6 +20,7 @@ from .utils import permute, slice_and_insert
 
 
 from .operators import (
+    HighestCostDestroy,
     RandomDestroyOperator,
     SingleOrderLeastCostRepairOperator,
     ParallelOptimalLeastCostRepairOperator,
@@ -29,6 +30,8 @@ from .lns import (
     LNS,
     StoppingCriterion,
     AcceptanceCriterion,
+    DestroyStrategy,
+    RepairStrategy,
     DestructionDegreeCriterion,
     PLNS,
 )

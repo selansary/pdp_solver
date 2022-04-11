@@ -10,11 +10,13 @@ from core import (
     LNS,
     PLNS,
     Compartment,
+    DestroyStrategy,
     DestructionDegreeCriterion,
     Item,
     ModelledOneDimensionalProblem,
     ModelledTwoDimensionalProblem,
     Problem,
+    RepairStrategy,
     TwoDimensionalCompartment,
     TwoDimensionalItem,
     TwoDimensionalProblem,
@@ -115,7 +117,8 @@ def run_2d():
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
     possible_time_limits = [(1, 10)]
-    # possible_time_limits = [(1, 30), (15, 15), (30, 0)]
+    possible_time_limits = [(1, 30), (15, 15), (30, 0)]
+    possible_time_limits = [(1, 50)]
 
     results = []
     for nb_items in possible_nb_items:
@@ -149,12 +152,14 @@ def run_2d():
                 # print(sol)
                 print(f"Presolve Solution cost: {presolve_obj}")
 
-                # Apply LNS algorithm
+                # Apply LNS without parallelism
                 pdp = TwoDimensionalProblem(items, vehicle, modelled_pdp.C)
                 solver = LNS(pdp, sol, time_limit=lns_time)
                 solver.set_destruction_degree_criterion(
-                    DestructionDegreeCriterion.CONSTANT
+                    DestructionDegreeCriterion.GRADUALLY_DECREASING
                 )
+                # solver.set_destroy_strategy(DestroyStrategy.RANDOM)
+                # solver.set_repair_strategy(RepairStrategy.PARALLEL_OPTIMAL_LEAST_COST)
                 start_time = time.time()
                 s_time = timeit.default_timer()
                 best_sol = solver.search()
@@ -163,6 +168,23 @@ def run_2d():
                 delta = time.time() - start_time
                 lns_obj = pdp.evaluate_solution(best_sol)
                 print(f"LNS Solution cost: {lns_obj} in {delta}")
+
+                # Apply Parallel LNS algorithm
+                pdp = TwoDimensionalProblem(items, vehicle, modelled_pdp.C)
+                solver = PLNS(pdp, sol, time_limit=lns_time)
+                solver.set_destruction_degree_criterion(
+                    DestructionDegreeCriterion.GRADUALLY_DECREASING
+                )
+                # solver.set_destroy_strategy(DestroyStrategy.RANDOM)
+                # solver.set_repair_strategy(RepairStrategy.PARALLEL_OPTIMAL_LEAST_COST)
+                start_time = time.time()
+                s_time = timeit.default_timer()
+                best_sol = solver.search()
+                p_lns_delta = timeit.default_timer() - s_time
+                # print(best_sol)
+                p_delta = time.time() - start_time
+                p_lns_obj = pdp.evaluate_solution(best_sol)
+                print(f"PLNS Solution cost: {p_lns_obj} in {p_delta}")
                 # print(best_sol)
 
                 result = dict(
@@ -172,7 +194,9 @@ def run_2d():
                     presolve_delta="{:.2f}".format(presolve_delta),
                     lns_time=lns_time,
                     lns_delta="{:.2f}".format(lns_delta),
+                    p_lns_delta="{:.2f}".format(p_lns_delta),
                     presolve_obj=presolve_obj,
+                    p_lns_obj=p_lns_obj if lns_time else None,
                     lns_obj=lns_obj if lns_time else None,
                 )
                 results.append(result)

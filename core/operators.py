@@ -1,8 +1,9 @@
 import multiprocessing as mp
 import random
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from copy import deepcopy
-from typing import List
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -49,6 +50,127 @@ class RandomDestroyOperator(DestroyOperator):
             self.problem.vehicle,
             is_partial=True,
         )
+
+
+class HighestCostDestroy(DestroyOperator):
+    """Destroy a solution by removing the highest cost edges of the route."""
+
+    def _destroy_highest_cost_edges(self) -> Solution:
+        """
+        Destroy based on highest cost edges, regardless of them being towards
+        pickup or delivery vertices.
+        """
+        C = self.problem.C
+        N = len(self.problem.items)
+        order = self.solution.order
+        stack_assignment = self.solution.stack_assignment
+
+        is_pickup = lambda v: v <= N
+        associated_vertex = lambda v: v + N if is_pickup(v) else v - N
+
+        prev = 0
+        edges_costs: List[Tuple[int, int]] = []
+        for vertex in order[1:]:
+            cost = C[prev][vertex]
+            edges_costs.append((cost, vertex))
+            prev = vertex
+
+        # Sort by highest cost
+        edges_costs = sorted(edges_costs, key=lambda t: t[0], reverse=True)
+
+        # Remove R highest-cost edges with their associated edges
+        # (pickup-delivery / delivery-pickup)
+        R = self.nb_requests_to_remove
+        vertices_to_remove: List[int] = []
+        for _, vertex in edges_costs:
+            if not associated_vertex(vertex) in vertices_to_remove:
+                vertices_to_remove.append(vertex)
+                if len(vertices_to_remove) == R:
+                    break
+        # Add associated vertices
+        associated_vertices = [
+            associated_vertex(vertex) for vertex in vertices_to_remove
+        ]
+        vertices_to_remove.extend(associated_vertices)
+        # Remove vertices from total order of solution
+        reduced_order = [vertex for vertex in order if vertex not in vertices_to_remove]
+        # Adapt stack assignment to removed vertices
+        reduced_stack_assignment = [
+            [
+                pick_vertex
+                for pick_vertex in stack
+                if not pick_vertex in vertices_to_remove
+            ]
+            for stack in stack_assignment
+        ]
+
+        return Solution(
+            self.problem.items,
+            reduced_order,
+            reduced_stack_assignment,
+            self.problem.vehicle,
+            is_partial=True,
+        )
+
+    def _destroy_highest_cost_requests(self) -> Solution:
+        """
+        Destroy based on highest cost requests. Highest cost requests are those with
+        highest sum of edge costs of their pickup and delivery vertices.
+        """
+        C = self.problem.C
+        N = len(self.problem.items)
+        order = self.solution.order
+        stack_assignment = self.solution.stack_assignment
+
+        is_pickup = lambda v: v <= N
+
+        prev = 0
+        # a mapping from the pickup vertex to total request cost (sum pick/del edges)
+        request_costs: Dict[int, int] = defaultdict(int)
+        for vertex in order[1:]:
+            cost = C[prev][vertex]
+            pickup_vertex = vertex if is_pickup(vertex) else vertex - N
+            request_costs[pickup_vertex] += cost
+            prev = vertex
+
+        # Sort requests by highest cost
+        request_costs = {
+            req: cost
+            for req, cost in sorted(
+                request_costs.items(), key=lambda item: item[1], reverse=True
+            )
+        }
+
+        # Remove R highest-cost requests
+        R = self.nb_requests_to_remove
+        vertices_to_remove: List[int] = []
+        for pick_vertex, _ in request_costs.items():
+            vertices_to_remove.append(pick_vertex)
+            vertices_to_remove.append(pick_vertex + N)
+            if len(vertices_to_remove) / 2 == R:
+                break
+        # Remove vertices from total order of solution
+        reduced_order = [vertex for vertex in order if vertex not in vertices_to_remove]
+        # Adapt stack assignment to removed vertices
+        reduced_stack_assignment = [
+            [
+                pick_vertex
+                for pick_vertex in stack
+                if not pick_vertex in vertices_to_remove
+            ]
+            for stack in stack_assignment
+        ]
+
+        return Solution(
+            self.problem.items,
+            reduced_order,
+            reduced_stack_assignment,
+            self.problem.vehicle,
+            is_partial=True,
+        )
+
+    def destroy(self) -> Solution:
+        return self._destroy_highest_cost_requests()
 
 
 class RepairOperator(ABC):
