@@ -1,7 +1,7 @@
 from copy import copy
 from typing import Dict, List, Tuple
 
-from . import Item
+from . import Item, Vehicle
 
 
 class Solution:
@@ -10,11 +10,13 @@ class Solution:
         items: Dict[int, Item],
         order: List[int],
         stack_assignment: List[List[int]],
+        vehicle: Vehicle,
         is_partial: bool = False,
     ) -> None:
         # Items representing the customers
         # items[pickup_vertex] = some Item
         self.items = items
+        self.vehicle = vehicle
         # Order of visiting vertices, represented by vertices indices
         self.order = order
 
@@ -59,7 +61,10 @@ class Solution:
                 pick_vertex = corresponding_pickup_vertex(vertex)
                 stack_idx = self.item_assignment[pick_vertex]
                 item = self.items[pick_vertex]
-                demand = item.length if is_pickup_vertex(vertex) else -item.length
+                comp = self.vehicle.compartments[stack_idx]
+                # Generic 1D / 2D items support
+                demand = comp.demand_for_item(item)
+
                 # update state with demand picked / delivered at the vertex
                 state[stack_idx] += demand
 
