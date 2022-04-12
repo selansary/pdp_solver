@@ -10,6 +10,7 @@ from typing import Callable, List, Optional
 import numpy as np
 
 from . import (
+    HighestCostDestroy,
     OptimizationObjective,
     ParallelOptimalLeastCostRepairOperator,
     Problem,
@@ -110,6 +111,7 @@ class DestroyStrategy(Enum):
     """Strategy to be used for the destroy operator during LNS."""
 
     RANDOM = auto()
+    HIGHEST_COST = auto()
 
 
 class RepairStrategy(Enum):
@@ -392,10 +394,20 @@ class LNS:
         )
         return destroy_operator.destroy()
 
+    def _highest_cost_destroy(
+        self, solution: Solution, nb_requests_to_remove: int
+    ) -> Solution:
+        destroy_operator = HighestCostDestroy(
+            self.problem, solution, nb_requests_to_remove
+        )
+        return destroy_operator.destroy()
+
     def destroy(self, solution: Solution, nb_requests_to_remove: int) -> Solution:
         """Return a destroyed copy of the solution."""
         if self.destroy_strategy == DestroyStrategy.RANDOM:
             return self._random_destroy(solution, nb_requests_to_remove)
+        elif self.destroy_strategy == DestroyStrategy.HIGHEST_COST:
+            return self._highest_cost_destroy(solution, nb_requests_to_remove)
         else:
             raise NotImplementedError
 
@@ -498,6 +510,11 @@ class PLNS(LNS):
             optimization_objective=self.optimization_objective,
         )
         insertion_orders = arbitrary_repair_operator.insertion_orders
+        if len(insertion_orders) > CPU_COUNT / 2:
+            insertion_orders_indices = np.random.choice(
+                range(CPU_COUNT // 2), size=CPU_COUNT // 2, replace=False
+            )
+            insertion_orders = [insertion_orders[i] for i in insertion_orders_indices]
 
         # Distribute insertion orders on parallel processes
         async_results = [
