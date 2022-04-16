@@ -10,7 +10,7 @@ from typing import Callable, List, Optional
 import numpy as np
 
 from . import (
-    HighestCostDestroy,
+    HighestCostDestroyOperator,
     OptimizationObjective,
     ParallelOptimalLeastCostRepairOperator,
     Problem,
@@ -171,7 +171,7 @@ class LNS:
         estimating the degree for destruction every search iteration.
 
         The default degree of destruction is based on the destruction degreee criterion
-        `DestructionDegree.CONSTANT` and is the average of the `min_destruction_degree`
+        `DestructionDegreeCriterion.CONSTANT` and is the average of the `min_destruction_degree`
         and the `max_destruction_degree`. Other degree of destruction criteria can be
         set using `set_destruction_degree_criterion`.
 

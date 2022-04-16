@@ -1,0 +1,18 @@
+@startuml solution
+
+!include ./style.iuml
+
+class Solution {
+    Dict[int, Item] items
+    List[int] order
+    List[List[int]] stack_assingment
+    Vehicle vehicle
+    bool is_partial
+}
+
+'Aggregations
+Solution::items o- Item
+Solution::vehicle o-left Vehicle
+
+hide empty members
+@enduml

@@ -1,0 +1,48 @@
+@startuml commons
+
+!include ./style.iuml
+
+' skinparam linetype ortho
+
+class Item {
+    int length
+}
+
+class TwoDimensionalItem {
+    int width
+}
+
+class Compartment {
+    {field} int depth (capacity)
+    bool is_item_compatible(Item item)
+    int demand_for_item(Item item)
+}
+
+class TwoDimensionalCompartment {
+    int length
+}
+
+class Vehicle {
+    List[Compartment] compartments
+}
+
+enum OptimizationObjective {
+    CHEAPEST_ROUTE
+    LEAST_ROTATION
+    CHEAPEST_ROUTE_LEAST_ROTATION
+}
+
+'Extensions
+Compartment <|-- TwoDimensionalCompartment
+Item <|-- TwoDimensionalItem
+
+'Aggregations
+
+'Compositions
+Vehicle *-- Compartment
+
+'Associations
+Item - Compartment::is_item_compatible
+' Item - Compartment::demand_for_item
+
+@enduml

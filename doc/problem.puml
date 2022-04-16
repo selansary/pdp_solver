@@ -1,0 +1,59 @@
+@startuml problem
+
+!include ./style.iuml
+
+' skinparam linetype ortho
+
+class Problem {
+    List[Item] items
+    Vehicle vehicle
+    List[List[int]] distance_matrix
+    int evaluate_solution(Solution solution,
+                            \t OptimizationObjective optimization_objective)
+}
+
+class TwoDimensionalProblem {
+    int evaluate_solution(Solution solution,
+                            \t OptimizationObjective optimization_objective)
+}
+
+class ModelledBaseProblem {
+    gurobipy.Model model
+    Dict[str, gurobipy.tupledict] model_data
+    create_model()
+    apply_constraints()
+    set_model_objective(OptimizationObjective
+                        \t \t \t \t OptimizationObjective)
+    solve(float time_limit)
+    Solution extract_solution()
+}
+
+class ModelledTwoDimensionalProblem {
+    create_model()
+    apply_constraints()
+    set_model_objective(OptimizationObjective
+                        \t \t \t \t OptimizationObjective)
+}
+
+left to right direction
+
+'Extensions
+Problem <|-- ModelledBaseProblem
+ModelledBaseProblem <|-- ModelledOneDimensionalProblem
+
+Problem <|-right- TwoDimensionalProblem
+ModelledBaseProblem <|-right- ModelledTwoDimensionalProblem
+TwoDimensionalProblem <|-- ModelledTwoDimensionalProblem
+
+'Aggregations
+Item --o Problem::items
+Vehicle --o Problem::vehicle
+
+'Associations
+Solution -- Problem::evaluate_solution
+OptimizationObjective -- Problem::evaluate_solution
+
+'Hidden links for visualization
+
+hide empty members
+@enduml

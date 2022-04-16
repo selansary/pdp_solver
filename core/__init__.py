@@ -20,7 +20,7 @@ from .utils import permute, slice_and_insert
 
 
 from .operators import (
-    HighestCostDestroy,
+    HighestCostDestroyOperator,
     RandomDestroyOperator,
     SingleOrderLeastCostRepairOperator,
     ParallelOptimalLeastCostRepairOperator,

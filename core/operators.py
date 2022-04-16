@@ -52,7 +52,7 @@ class RandomDestroyOperator(DestroyOperator):
         )
 
 
-class HighestCostDestroy(DestroyOperator):
+class HighestCostDestroyOperator(DestroyOperator):
     """Destroy a solution by removing the highest cost edges of the route."""
 
     def _destroy_highest_cost_edges(self) -> Solution:
