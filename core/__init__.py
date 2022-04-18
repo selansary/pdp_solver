@@ -23,6 +23,7 @@ from .operators import (
     HighestCostDestroyOperator,
     RandomDestroyOperator,
     SingleOrderLeastCostRepairOperator,
+    GreedyLeastCostInsertRepairOperator,
     ParallelOptimalLeastCostRepairOperator,
 )
 

@@ -10,6 +10,7 @@ from typing import Callable, List, Optional
 import numpy as np
 
 from . import (
+    GreedyLeastCostInsertRepairOperator,
     HighestCostDestroyOperator,
     OptimizationObjective,
     ParallelOptimalLeastCostRepairOperator,
@@ -117,6 +118,7 @@ class DestroyStrategy(Enum):
 class RepairStrategy(Enum):
     """Strategy to be used for the repair operator during LNS."""
 
+    GREEDY_LEAST_COST_INSERT = auto()
     RANDOM_SINGLE_ORDER_LEAST_COST = auto()
     PARALLEL_OPTIMAL_LEAST_COST = auto()
 
@@ -397,7 +399,7 @@ class LNS:
     def _highest_cost_destroy(
         self, solution: Solution, nb_requests_to_remove: int
     ) -> Solution:
-        destroy_operator = HighestCostDestroy(
+        destroy_operator = HighestCostDestroyOperator(
             self.problem, solution, nb_requests_to_remove
         )
         return destroy_operator.destroy()
@@ -435,12 +437,25 @@ class LNS:
         )
         return repair_operator.repair()
 
+    def _greedy_least_cost_insert_repair_operator(
+        self, destroyed_solution: Solution
+    ) -> Solution:
+        """Greedily repair the solution by lest cost insert."""
+        repair_operator = GreedyLeastCostInsertRepairOperator(
+            self.problem,
+            destroyed_solution,
+            optimization_objective=self.optimization_objective,
+        )
+        return repair_operator.repair()
+
     def repair(self, destroyed_solution: Solution) -> Solution:
         """Return a repaired copy of the destroyed solution."""
         if self.repair_strategy == RepairStrategy.RANDOM_SINGLE_ORDER_LEAST_COST:
             return self._random_least_cost_repair(destroyed_solution)
         elif self.repair_strategy == RepairStrategy.PARALLEL_OPTIMAL_LEAST_COST:
             return self._parallel_optimal_least_cost_repair(destroyed_solution)
+        elif self.repair_strategy == RepairStrategy.GREEDY_LEAST_COST_INSERT:
+            return self._greedy_least_cost_insert_repair_operator(destroyed_solution)
         else:
             raise NotImplementedError
 
