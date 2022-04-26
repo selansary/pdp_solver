@@ -64,6 +64,8 @@ class Solution:
                 comp = self.vehicle.compartments[stack_idx]
                 # Generic 1D / 2D items support
                 demand = comp.demand_for_item(item)
+                if not is_pickup_vertex(vertex):
+                    demand = -1 * demand
 
                 # update state with demand picked / delivered at the vertex
                 state[stack_idx] += demand

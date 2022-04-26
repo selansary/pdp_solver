@@ -316,7 +316,7 @@ class ModelledBaseProblem(Problem):
             (sum(C[i][j] * x[i, j] for i in V for j in V)), gp.GRB.MINIMIZE
         )
 
-    def solve(self, time_limit: float = 3.0, write_model: bool = True):
+    def solve(self, time_limit: float = 3.0, write_model: bool = False):
         """Run the gurobi solver on the problem model with a time limit."""
         if not self.model:
             return

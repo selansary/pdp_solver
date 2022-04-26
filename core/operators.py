@@ -304,7 +304,13 @@ class LeastCostRepairOperator(RepairOperator, ABC):
                             collected_demand = 0
                             for v in ed_order[1:]:
                                 # Generic support for 1D and 2D items
-                                demand = stack.demand_for_item(item)
+                                stack_item = self.items[self.pickup_vertex(v)]
+                                if not stack.is_item_compatible(stack_item):
+                                    continue
+
+                                demand = stack.demand_for_item(
+                                    items[self.pickup_vertex(v)]
+                                )
                                 if v in related_vertices:
                                     collected_demand += demand
                                 elif v in corresponding_deliveres:
@@ -433,6 +439,59 @@ class ParallelOptimalLeastCostRepairOperator(LeastCostRepairOperator):
         q.put(solution)
 
 
+class ParallelBestEffortLeastCostRepairOperator(LeastCostRepairOperator):
+    """
+    Best Least Cost repair operator based on multiple parallel insertion orders.
+    Each possible insertion order is solved independently in a process and the best
+    solution with the best insertion cost is selected.
+
+    Differes from `ParallelOptimalLeastCostRepairOperator` in limiting the number of
+    processes, and consequently the explored insertion orders, to the machine's cpus.
+    """
+
+    def __init__(
+        self,
+        problem: Problem,
+        destroyed_solution: Solution,
+        optimization_objective: OptimizationObjective = OptimizationObjective.CHEAPEST_ROUTE,
+        nb_processes: int = mp.cpu_count() - 1,
+    ) -> None:
+        super().__init__(problem, destroyed_solution, optimization_objective)
+        self.nb_processes = nb_processes
+
+    def repair(self) -> Solution:
+        q: mp.Queue = mp.Queue()
+        best_solution = None
+        best_objective = None
+
+        insertion_orders = self.insertion_orders
+        if len(self.insertion_orders) > self.nb_processes:
+            insertion_orders_indices = np.random.choice(
+                range(len(insertion_orders)), size=self.nb_processes, replace=False
+            )
+            insertion_orders = [insertion_orders[i] for i in insertion_orders_indices]
+
+        processes = []  # operator is not reusable, no pool needed (for now at least)
+        for order in insertion_orders:
+            process = mp.Process(target=self.single_order_repair, args=(order, q))
+            processes.append(process)
+            process.start()
+
+        for process in processes:
+            sol = q.get()
+            obj = self.evaluate_solution(sol)
+            if not best_solution or obj < best_objective:
+                best_solution = sol
+                best_objective = obj
+            process.join()
+
+        return best_solution
+
+    def single_order_repair(self, insertion_order, q):
+        solution = super().single_order_repair(insertion_order)
+        q.put(solution)
+
+
 class GreedyLeastCostInsertRepairOperator(LeastCostRepairOperator):
     def _insert_one_request(
         self, pickup_vertex: int, partial_solution: Solution
@@ -502,7 +561,9 @@ class GreedyLeastCostInsertRepairOperator(LeastCostRepairOperator):
 
                     if feasible:
                         # extend the extended pick order with the delivery
-                        ed_order = slice_and_insert(ep_order, pickup_vertex + N, del_pos)
+                        ed_order = slice_and_insert(
+                            ep_order, pickup_vertex + N, del_pos
+                        )
 
                         # sanity check for stack capacity
                         ep_stack_assign = deepcopy(stack_assignment)
@@ -515,7 +576,13 @@ class GreedyLeastCostInsertRepairOperator(LeastCostRepairOperator):
                         collected_demand = 0
                         for v in ed_order[1:]:
                             # Generic support for 1D and 2D items
-                            demand = stack.demand_for_item(item)
+                            stack_item = self.items[self.pickup_vertex(v)]
+                            if not stack.is_item_compatible(stack_item):
+                                continue
+
+                            demand = stack.demand_for_item(
+                                self.items[self.pickup_vertex(v)]
+                            )
                             if v in related_vertices:
                                 collected_demand += demand
                             elif v in corresponding_deliveres:
@@ -540,10 +607,7 @@ class GreedyLeastCostInsertRepairOperator(LeastCostRepairOperator):
                             is_partial=True,
                         )
                         e_cost = self.evaluate_solution(solution)
-                        if (
-                            best_cost is None
-                            or best_cost > e_cost
-                        ):
+                        if best_cost is None or best_cost > e_cost:
                             best_cost = e_cost
                             best_solution = solution
 

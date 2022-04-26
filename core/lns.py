@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum, Flag, auto
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -128,6 +128,8 @@ class SearchSolution:
     iteration: int
     solution: Solution
     objective: int
+    time_to_find: float  # seconds
+    iteration_time: float  # seconds
     time_found: float = field(default_factory=time.time)
 
 
@@ -140,7 +142,7 @@ class LNS:
         self,
         problem: Problem,
         initial_solution: Solution,
-        max_iterations: int = 1000,
+        max_iterations: int = 10000,
         max_without_improvement: int = 10,
         time_limit: float = 1000.0,
         min_destruction_degree: float = 0.15,
@@ -212,11 +214,12 @@ class LNS:
 
         initial_objective = self.evaluate_solution(initial_solution)
         self.solutions_cache: List[SearchSolution] = [
-            SearchSolution(-1, initial_solution, initial_objective)
+            SearchSolution(-1, initial_solution, initial_objective, 0, 0)
         ]
 
         self.start_time: Optional[float] = None
         self.iteration = 0
+        self.stats: Dict[str, Any] = dict()
 
     def search(self) -> Solution:
         self.iteration = 0
@@ -227,6 +230,7 @@ class LNS:
 
         best_solution = current_solution
         best_objective = current_objective
+        best_cached_solution = self.solutions_cache[0]
 
         while not self.stop():
             # Get the degree of destruction based on the set DestructionDegreeCriterion
@@ -235,13 +239,21 @@ class LNS:
             # Apply the destroy and repair operators to retrieve a new solution
             # in the neighborhood of the current solution
             solution = deepcopy(current_solution)
+            s_time = time.time()
             solution = self.repair(self.destroy(solution, nb_removed))
 
             # Cache the found solution
             new_objective = self.evaluate_solution(solution)
-            self.solutions_cache.append(
-                SearchSolution(self.iteration, solution, new_objective)
+            time_found = time.time()
+            cached_solution = SearchSolution(
+                self.iteration,
+                solution,
+                new_objective,
+                time_to_find=time_found - self.start_time,
+                iteration_time=time_found - s_time,
+                time_found=time_found,
             )
+            self.solutions_cache.append(cached_solution)
 
             # Check if the objective improved or if the acceptance criterion allows
             # the new unimproved solution (applicable for a minimization problem)
@@ -253,11 +265,19 @@ class LNS:
                 if new_objective < best_objective:
                     best_solution = solution
                     best_objective = new_objective
+                    best_cached_solution = cached_solution
 
             self.iteration += 1
         print(
-            f"Terminating LNS in {self.iteration} iterations and "
-            f"objs {[s.objective for s in self.solutions_cache]}"
+            f"Terminating LNS in {self.iteration} iterations and obj {best_objective}"
+        )
+
+        self.stats = dict(
+            best_objective=best_objective,
+            best_iteration=best_cached_solution.iteration,
+            best_solution=best_solution,
+            best_cached_solution=best_cached_solution,
+            cached_solutions=self.solutions_cache,
         )
         return best_solution
 
@@ -483,6 +503,7 @@ class PLNS(LNS):
         optimization_objective: OptimizationObjective = (
             OptimizationObjective.CHEAPEST_ROUTE
         ),
+        nb_processes: int = CPU_COUNT - 1,
     ) -> None:
         super().__init__(
             problem,
@@ -496,11 +517,12 @@ class PLNS(LNS):
             repair_strategy,
             optimization_objective,
         )
+        self.nb_processes = nb_processes
         self.processing_pool = self.init_processing_pool()
 
     def init_processing_pool(self) -> "mp.pool.Pool":
-        print(f"Parallel LNS initialized with {CPU_COUNT} processes")
-        return mp.Pool(CPU_COUNT)
+        print(f"Parallel LNS initialized with {self.nb_processes} processes")
+        return mp.Pool(self.nb_processes)
 
     def terminate_processing_pool(self):
         self.processing_pool.close()
@@ -525,9 +547,9 @@ class PLNS(LNS):
             optimization_objective=self.optimization_objective,
         )
         insertion_orders = arbitrary_repair_operator.insertion_orders
-        if len(insertion_orders) > CPU_COUNT / 2:
+        if len(insertion_orders) > self.nb_processes:
             insertion_orders_indices = np.random.choice(
-                range(CPU_COUNT // 2), size=CPU_COUNT // 2, replace=False
+                range(len(insertion_orders)), size=self.nb_processes, replace=False
             )
             insertion_orders = [insertion_orders[i] for i in insertion_orders_indices]
 

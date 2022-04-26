@@ -64,7 +64,7 @@ def run_1d():
                 presolve_delta = timeit.default_timer() - s_time
                 sol = modelled_pdp.extract_solution()
                 presolve_obj = modelled_pdp.evaluate_solution(sol)
-                # print(sol)
+                print(sol)
                 print(f"Presolve Solution cost: {presolve_obj}")
 
                 # Apply LNS algorithm
@@ -74,7 +74,7 @@ def run_1d():
                 s_time = timeit.default_timer()
                 best_sol = solver.search()
                 lns_delta = timeit.default_timer() - s_time
-                # print(best_sol)
+                print(best_sol)
                 delta = time.time() - start_time
                 lns_obj = pdp.evaluate_solution(best_sol)
                 print(f"LNS Solution cost: {lns_obj} in {delta}")
@@ -116,9 +116,9 @@ def run_2d():
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
-    possible_time_limits = [(1, 10)]
-    possible_time_limits = [(1, 30), (15, 15), (30, 0)]
-    possible_time_limits = [(1, 50)]
+    possible_time_limits = [(500, 0), (1, 500)]
+    # possible_time_limits = [(1, 30), (15, 15), (30, 0)]
+    # possible_time_limits = [(1, 5), (1, 10), (1, 30), (1, 50), (1, 100), (1, 200)]
 
     results = []
     for nb_items in possible_nb_items:
@@ -149,55 +149,59 @@ def run_2d():
                 presolve_delta = timeit.default_timer() - s_time
                 sol = modelled_pdp.extract_solution()
                 presolve_obj = modelled_pdp.evaluate_solution(sol)
-                # print(sol)
                 print(f"Presolve Solution cost: {presolve_obj}")
 
                 # Apply LNS without parallelism
                 pdp = TwoDimensionalProblem(items, vehicle, modelled_pdp.C)
                 solver = LNS(pdp, sol, time_limit=lns_time)
                 solver.set_destruction_degree_criterion(
-                    DestructionDegreeCriterion.GRADUALLY_DECREASING
+                    DestructionDegreeCriterion.CONSTANT
                 )
-                # solver.set_destroy_strategy(DestroyStrategy.RANDOM)
-                # solver.set_repair_strategy(RepairStrategy.PARALLEL_OPTIMAL_LEAST_COST)
-                start_time = time.time()
-                s_time = timeit.default_timer()
+                lns_sol = solver.search()
+                lns_obj = pdp.evaluate_solution(lns_sol)
+                lns_best_iteration = solver.stats["best_iteration"]
+                lns_nb_iterations = solver.iteration
+
+                # Apply LNS with parallel best effort repair
+                solver = LNS(pdp, sol, time_limit=lns_time)
+                solver.set_destruction_degree_criterion(
+                    DestructionDegreeCriterion.CONSTANT
+                )
+                solver.set_repair_strategy(RepairStrategy.PARALLEL_OPTIMAL_LEAST_COST)
                 best_sol = solver.search()
-                lns_delta = timeit.default_timer() - s_time
-                # print(best_sol)
-                delta = time.time() - start_time
-                lns_obj = pdp.evaluate_solution(best_sol)
-                print(f"LNS Solution cost: {lns_obj} in {delta}")
+                parallel_processes_lns_obj = pdp.evaluate_solution(best_sol)
+                pp_best_iteration = solver.stats["best_iteration"]
+                pp_nb_iterations = solver.iteration
 
                 # Apply Parallel LNS algorithm
                 pdp = TwoDimensionalProblem(items, vehicle, modelled_pdp.C)
                 solver = PLNS(pdp, sol, time_limit=lns_time)
                 solver.set_destruction_degree_criterion(
-                    DestructionDegreeCriterion.GRADUALLY_DECREASING
+                    DestructionDegreeCriterion.CONSTANT
                 )
-                # solver.set_destroy_strategy(DestroyStrategy.RANDOM)
-                # solver.set_repair_strategy(RepairStrategy.PARALLEL_OPTIMAL_LEAST_COST)
-                start_time = time.time()
-                s_time = timeit.default_timer()
                 best_sol = solver.search()
-                p_lns_delta = timeit.default_timer() - s_time
-                # print(best_sol)
-                p_delta = time.time() - start_time
-                p_lns_obj = pdp.evaluate_solution(best_sol)
-                print(f"PLNS Solution cost: {p_lns_obj} in {p_delta}")
-                # print(best_sol)
+                pool_lns_obj = pdp.evaluate_solution(best_sol)
+                pool_best_iteration = solver.stats["best_iteration"]
+                pool_nb_iterations = solver.iteration
 
                 result = dict(
                     nb_items=nb_items,
                     total_time=presolve_time + lns_time,
                     presolve_time=presolve_time,
-                    presolve_delta="{:.2f}".format(presolve_delta),
-                    lns_time=lns_time,
-                    lns_delta="{:.2f}".format(lns_delta),
-                    p_lns_delta="{:.2f}".format(p_lns_delta),
                     presolve_obj=presolve_obj,
-                    p_lns_obj=p_lns_obj if lns_time else None,
-                    lns_obj=lns_obj if lns_time else None,
+                    lns_time=lns_time,
+
+                    lns_obj = lns_obj if lns_time else None,
+                    lns_nb_iterations=lns_nb_iterations,
+                    lns_best_iteration=lns_best_iteration,
+
+                    processes_lns_obj=parallel_processes_lns_obj if lns_time else None,
+                    processes_nb_iterations=pp_nb_iterations,
+                    processes_best_iteration=pp_best_iteration,
+
+                    pool_lns_obj=pool_lns_obj if lns_time else None,
+                    pool_nb_iterations=pool_nb_iterations,
+                    pool_best_iteration=pool_best_iteration,
                 )
                 results.append(result)
 

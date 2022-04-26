@@ -25,6 +25,7 @@ from .operators import (
     SingleOrderLeastCostRepairOperator,
     GreedyLeastCostInsertRepairOperator,
     ParallelOptimalLeastCostRepairOperator,
+    ParallelBestEffortLeastCostRepairOperator,
 )
 
 from .lns import (
