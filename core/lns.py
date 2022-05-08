@@ -87,9 +87,10 @@ class StoppingCriterion(Flag):
 
     TIMELIMIT = auto()
     MAX_ITERATIONS = auto()
-    NO_IMPROVEMENT = auto()
+    NO_IMPROVEMENT = auto()  # max iterations without improvement
 
-    MAX_ITERATIONS_TIMELIMIT = MAX_ITERATIONS | TIMELIMIT
+    MAX_ITERATIONS_TIMELIMIT = auto()
+    NO_IMPROVEMENT_TIMELIMIT = auto()
 
 
 class DestructionDegreeCriterion(Enum):
@@ -145,6 +146,10 @@ class LNS:
         max_iterations: int = 10000,
         max_without_improvement: int = 10,
         time_limit: float = 1000.0,
+        no_improvement_time_limit: float = 20.0,
+        stopping_criterion: StoppingCriterion = (
+            StoppingCriterion.MAX_ITERATIONS_TIMELIMIT
+        ),
         min_destruction_degree: float = 0.15,
         max_destruction_degree: float = 0.35,
         destroy_strategy: DestroyStrategy = DestroyStrategy.RANDOM,
@@ -196,7 +201,10 @@ class LNS:
         self.time_limit = time_limit
         self.max_iterations = max_iterations
         self.max_without_improvement = max_without_improvement
-        self.stop = self._stop_max_iterations_timelimit
+        self.no_improvement_time_limit = no_improvement_time_limit
+        self.stopping_criterion = stopping_criterion
+        # Set criterion for stop()
+        self.set_stopping_criterion(stopping_criterion)
 
         # Parameters for degree of destruction
         self.min_destruction_degree = min_destruction_degree
@@ -216,6 +224,7 @@ class LNS:
         self.solutions_cache: List[SearchSolution] = [
             SearchSolution(-1, initial_solution, initial_objective, 0, 0)
         ]
+        self.best_cached_solution = self.solutions_cache[0]
 
         self.start_time: Optional[float] = None
         self.iteration = 0
@@ -225,12 +234,8 @@ class LNS:
         self.iteration = 0
         self.start_time = time.time()
 
-        current_solution = self.initial_solution
-        current_objective = self.evaluate_solution(current_solution)
-
-        best_solution = current_solution
-        best_objective = current_objective
-        best_cached_solution = self.solutions_cache[0]
+        current_solution = self.best_cached_solution.solution
+        current_objective = self.best_cached_solution.objective
 
         while not self.stop():
             # Get the degree of destruction based on the set DestructionDegreeCriterion
@@ -262,24 +267,27 @@ class LNS:
             ):
                 current_solution = solution
                 current_objective = new_objective
-                if new_objective < best_objective:
-                    best_solution = solution
-                    best_objective = new_objective
-                    best_cached_solution = cached_solution
+                if new_objective < self.best_cached_solution.objective:
+                    self.best_cached_solution = cached_solution
 
             self.iteration += 1
+
         print(
-            f"Terminating LNS in {self.iteration} iterations and obj {best_objective}"
+            f"Terminating LNS in {self.iteration} iterations\n"
+            f"Total time: {'{:.2f}'.format(time.time() - self.start_time)} "
+            f"Best objective: {self.best_cached_solution.objective} found in "
+            f"{self.best_cached_solution.iteration} iterations in "
+            f"{'{:.2f}'.format(self.best_cached_solution.time_to_find)} s\n"
         )
 
         self.stats = dict(
-            best_objective=best_objective,
-            best_iteration=best_cached_solution.iteration,
-            best_solution=best_solution,
-            best_cached_solution=best_cached_solution,
+            best_objective=self.best_cached_solution.objective,
+            best_iteration=self.best_cached_solution.iteration,
+            best_solution=self.best_cached_solution.solution,
+            best_cached_solution=self.best_cached_solution,
             cached_solutions=self.solutions_cache,
         )
-        return best_solution
+        return self.best_cached_solution.solution
 
     def evaluate_solution(self, solution: Solution):
         """
@@ -299,26 +307,12 @@ class LNS:
         return self._stop_max_iterations() or self._stop_timelimit()
 
     def _stop_no_improvement(self) -> bool:
-        max_no_impro = self.max_without_improvement
-        if len(self.solutions_cache) < max_no_impro:
-            return False
+        impro_iteraton = self.best_cached_solution.iteration
+        return self.iteration - impro_iteraton > self.max_without_improvement
 
-        impro_count = 0
-        for i in range(1, len(self.solutions_cache) + 1):
-            if (
-                self.solutions_cache[-i].objective
-                < self.solutions_cache[-i - 1].objective
-            ):
-                # the solution improved wrt previous solution
-                impro_count = 1
-            else:
-                # the solution didn't improve wrt previous solution
-                impro_count += 1
-
-            if impro_count >= self.max_without_improvement:
-                return False
-
-        return True
+    def _stop_no_improvement_timelimit(self) -> bool:
+        impro_time = self.best_cached_solution.time_found
+        return time.time() - impro_time > self.no_improvement_time_limit
 
     def set_stopping_criterion(self, stopping_criterion: StoppingCriterion):
         """
@@ -327,7 +321,9 @@ class LNS:
             - `StoppingCriterion.TIMELIMIT`
             - `StoppingCriterion.MAX_ITERATIONS_TIMELIMIT`
             - `StoppingCriterion.NO_IMPROVEMENT`
+            - `StoppingCriterion.NO_IMPROVEMENT_TIMELIMIT`
         """
+        self.stopping_criterion = stopping_criterion
         if stopping_criterion == StoppingCriterion.MAX_ITERATIONS:
             self.stop = self._stop_max_iterations
         elif stopping_criterion == StoppingCriterion.TIMELIMIT:
@@ -336,6 +332,10 @@ class LNS:
             self.stop = self._stop_max_iterations_timelimit
         elif stopping_criterion == StoppingCriterion.NO_IMPROVEMENT:
             self.stop = self._stop_no_improvement
+        elif stopping_criterion == StoppingCriterion.NO_IMPROVEMENT_TIMELIMIT:
+            self.stop = self._stop_no_improvement_timelimit
+        else:
+            raise NotImplementedError
 
     def get_destruction_degree(self) -> int:
         """Get the destruction degree based on the desrtuction degree criterion set."""
@@ -494,6 +494,10 @@ class PLNS(LNS):
         max_iterations: int = 1000,
         max_without_improvement: int = 10,
         time_limit: float = 1000,
+        no_improvement_time_limit: float = 20.0,
+        stopping_criterion: StoppingCriterion = (
+            StoppingCriterion.MAX_ITERATIONS_TIMELIMIT
+        ),
         min_destruction_degree: float = 0.15,
         max_destruction_degree: float = 0.35,
         destroy_strategy: DestroyStrategy = DestroyStrategy.RANDOM,
@@ -511,6 +515,8 @@ class PLNS(LNS):
             max_iterations,
             max_without_improvement,
             time_limit,
+            no_improvement_time_limit,
+            stopping_criterion,
             min_destruction_degree,
             max_destruction_degree,
             destroy_strategy,
@@ -570,18 +576,28 @@ class PLNS(LNS):
         best_solution = async_results[0].get()
         best_objective = self.evaluate_solution(best_solution)
         for res in async_results:
-            try:
-                sol = res.get(timeout=self.time_limit - (time.time() - self.start_time))
-            except mp.TimeoutError:
-                print(
-                    "Parallel LNS timed out, not all insertion orders could be tried."
-                )
-                break
+            if self.stopping_criterion in [
+                StoppingCriterion.MAX_ITERATIONS_TIMELIMIT,
+                StoppingCriterion.TIMELIMIT,
+            ]:
+                try:
+                    sol = res.get(
+                        timeout=self.time_limit - (time.time() - self.start_time)
+                    )
+
+                except mp.TimeoutError:
+                    print(
+                        "Parallel LNS timed out, not all insertion orders could be tried."
+                    )
+                    break
             else:
+                # without time limit
+                sol = res.get()
                 obj = self.evaluate_solution(sol)
-                if obj < best_objective:
-                    best_solution = sol
-                    best_objective = obj
+
+            if obj < best_objective:
+                best_solution = sol
+                best_objective = obj
 
         assert best_solution, "solution must be repairable!"
         return best_solution

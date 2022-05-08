@@ -17,6 +17,7 @@ from core import (
     ModelledTwoDimensionalProblem,
     Problem,
     RepairStrategy,
+    StoppingCriterion,
     TwoDimensionalCompartment,
     TwoDimensionalItem,
     TwoDimensionalProblem,
@@ -157,6 +158,7 @@ def run_2d():
                 solver.set_destruction_degree_criterion(
                     DestructionDegreeCriterion.CONSTANT
                 )
+                solver.set_stopping_criterion(StoppingCriterion.NO_IMPROVEMENT)
                 lns_sol = solver.search()
                 lns_obj = pdp.evaluate_solution(lns_sol)
                 lns_best_iteration = solver.stats["best_iteration"]
@@ -179,6 +181,9 @@ def run_2d():
                 solver.set_destruction_degree_criterion(
                     DestructionDegreeCriterion.CONSTANT
                 )
+                solver.set_stopping_criterion(
+                    StoppingCriterion.NO_IMPROVEMENT_TIMELIMIT
+                )
                 best_sol = solver.search()
                 pool_lns_obj = pdp.evaluate_solution(best_sol)
                 pool_best_iteration = solver.stats["best_iteration"]
@@ -190,15 +195,12 @@ def run_2d():
                     presolve_time=presolve_time,
                     presolve_obj=presolve_obj,
                     lns_time=lns_time,
-
-                    lns_obj = lns_obj if lns_time else None,
+                    lns_obj=lns_obj if lns_time else None,
                     lns_nb_iterations=lns_nb_iterations,
                     lns_best_iteration=lns_best_iteration,
-
                     processes_lns_obj=parallel_processes_lns_obj if lns_time else None,
                     processes_nb_iterations=pp_nb_iterations,
                     processes_best_iteration=pp_best_iteration,
-
                     pool_lns_obj=pool_lns_obj if lns_time else None,
                     pool_nb_iterations=pool_nb_iterations,
                     pool_best_iteration=pool_best_iteration,
