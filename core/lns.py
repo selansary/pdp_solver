@@ -238,6 +238,7 @@ class LNS:
         current_objective = self.best_cached_solution.objective
 
         while not self.stop():
+            self.iteration += 1
             # Get the degree of destruction based on the set DestructionDegreeCriterion
             nb_removed = self.get_destruction_degree()
 
@@ -245,7 +246,10 @@ class LNS:
             # in the neighborhood of the current solution
             solution = deepcopy(current_solution)
             s_time = time.time()
-            solution = self.repair(self.destroy(solution, nb_removed))
+            try:
+                solution = self.repair(self.destroy(solution, nb_removed))
+            except TimeoutError:
+                break
 
             # Cache the found solution
             new_objective = self.evaluate_solution(solution)
@@ -270,11 +274,10 @@ class LNS:
                 if new_objective < self.best_cached_solution.objective:
                     self.best_cached_solution = cached_solution
 
-            self.iteration += 1
-
+        total_time = time.time() - self.start_time
         print(
             f"Terminating LNS in {self.iteration} iterations\n"
-            f"Total time: {'{:.2f}'.format(time.time() - self.start_time)} "
+            f"Total time: {'{:.2f}'.format(total_time)} "
             f"Best objective: {self.best_cached_solution.objective} found in "
             f"{self.best_cached_solution.iteration} iterations in "
             f"{'{:.2f}'.format(self.best_cached_solution.time_to_find)} s\n"
@@ -286,6 +289,7 @@ class LNS:
             best_solution=self.best_cached_solution.solution,
             best_cached_solution=self.best_cached_solution,
             cached_solutions=self.solutions_cache,
+            total_time=total_time,
         )
         return self.best_cached_solution.solution
 
@@ -537,10 +541,10 @@ class PLNS(LNS):
     def search(self) -> Solution:
         solution = super().search()
         duration = time.time() - self.start_time
-        print(
-            f"Parallel LNS terminating w/ objective {self.evaluate_solution(solution)}"
-            f" in {self.iteration} iterations in {duration} secs"
-        )
+        # print(
+        #     f"Parallel LNS terminating w/ objective {self.evaluate_solution(solution)}"
+        #     f" in {self.iteration} iterations in {duration} secs"
+        # )
         self.terminate_processing_pool()
         return solution
 
@@ -573,8 +577,8 @@ class PLNS(LNS):
             for insertion_order in insertion_orders
         ]
 
-        best_solution = async_results[0].get()
-        best_objective = self.evaluate_solution(best_solution)
+        best_solution = None
+        best_objective = None
         for res in async_results:
             if self.stopping_criterion in [
                 StoppingCriterion.MAX_ITERATIONS_TIMELIMIT,
@@ -589,13 +593,20 @@ class PLNS(LNS):
                     print(
                         "Parallel LNS timed out, not all insertion orders could be tried."
                     )
+                    if not best_solution:
+                        raise TimeoutError(
+                            "Iteration timed out before finding any solutions."
+                        )
                     break
+                else:
+                    obj = self.evaluate_solution(sol)
+
             else:
                 # without time limit
                 sol = res.get()
                 obj = self.evaluate_solution(sol)
 
-            if obj < best_objective:
+            if not best_objective or obj < best_objective:
                 best_solution = sol
                 best_objective = obj
 
