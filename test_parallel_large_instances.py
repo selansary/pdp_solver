@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import random
 import time
+import math
 
 from prettytable import PrettyTable
 
@@ -58,14 +59,19 @@ def run():
     initial solution but with different number of processes.
     """
 
-    time_limits = [5, 10]
-    # nb_processes = [1, 2, 8, 16, 32, 64]
-    nb_processes = [1, 2, 8]
-    nb_items = [15]
+    start = time.time()
+
+    time_limits = [10, 30, 60]
+    # degrees possible = 1, 2, 3,  4,  5..
+    # factorials       = 1, 2, 6, 24, 120
+    # nb_processes = [1, 2, 4, 8, 16, 32, 64]
+    # 4 and 16 are not very informative bec we have 8 and 32
+    nb_processes = [1, 2, 8, 32, 64]
+    nb_items = [15, 20, 30, 35]
 
     results = []
-    for time_limit in time_limits:
-        for nb_requests in nb_items:
+    for nb_requests in nb_items:
+        for time_limit in time_limits:
             # create the problem
             pdp = create_pdp(nb_requests=nb_requests)
 
@@ -76,15 +82,21 @@ def run():
             presolve_time = time.time() - s_time
             initial_objective = pdp.evaluate_solution(initial_solution)
 
+            degree_percent = 0.15
+            degree = max(1, int(degree_percent * nb_requests))
+            max_processes = math.factorial(degree)
+
             # apply PLNS with different process numbers
-            for nb_process in nb_processes:
+            for nb_process in [nb for nb in nb_processes if nb / 2 <= max_processes]:
+
                 solver = PLNS(
                     pdp,
                     initial_solution,
                     time_limit=time_limit,
                     nb_processes=nb_process,
+                    min_destruction_degree=degree_percent,
+                    max_destruction_degree=degree_percent,
                 )
-
                 # constant destruction degree to have constant time iterations
                 solver.set_destruction_degree_criterion(
                     DestructionDegreeCriterion.CONSTANT
@@ -98,12 +110,13 @@ def run():
 
                 result = dict(
                     nb_requests=nb_requests,
+                    destruction_degree=degree,
                     plns_time_limit=time_limit,
+                    nb_process=nb_process,
                     presolve_time="{:.4f}".format(presolve_time),
                     initial_objective=initial_objective,
                     plns_actual_time="{:.2f}".format(total_time),
                     total_time="{:.2f}".format(presolve_time + total_time),
-                    nb_process=nb_process,
                     plns_objective=best_obj,
                     plns_nb_iterations=total_iterations,
                     plns_best_iteration=best_iteration,
@@ -118,7 +131,7 @@ def run():
         table.add_row([res.get(k) for k in columns])
 
     print(table)
-
+    print(f"Total experiment time: {'{:.2f}'.format(time.time() - start)}")
 
 if __name__ == "__main__":
     run()
