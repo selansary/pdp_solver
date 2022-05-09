@@ -37,3 +37,5 @@ from .lns import (
     DestructionDegreeCriterion,
     PLNS,
 )
+
+from .greedy_solver import generate_greedy_solutions, GreedySolver
