@@ -607,3 +607,15 @@ class ModelledTwoDimensionalProblem(ModelledBaseProblem, TwoDimensionalProblem):
             raise ValueError("This objective is not applicable to this problem.")
 
         self.model.setObjective(objective_expr)
+
+class LimitlessModelledTwoDimensionalProblem(ModelledTwoDimensionalProblem):
+    def solve(self, time_limit: float = 3, write_model: bool = False):
+        """Run the gurobi solver on the problem model with a time limit."""
+        if not self.model:
+            return
+
+        if write_model:
+            self.model.write("./lp_models/" + self.name + ".lp")
+
+        # self.model.Params.TimeLimit = time_limit
+        self.model.optimize()
