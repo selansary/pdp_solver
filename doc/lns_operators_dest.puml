@@ -1,0 +1,35 @@
+@startuml lns_operators
+
+!include ./style.iuml
+
+skinparam linetype ortho
+
+
+abstract class DestroyOperator {
+    Problem problem
+    Solution destroyed_solution
+    int number_requests_to_remove
+    destroy()
+}
+
+class RandomDestroyOperator {
+    destroy()
+}
+
+class HighestCostDestroyOperator {
+    destroy()
+    _destroy_highest_cost_edges()
+    _destroy_highest_cost_requests()
+}
+
+' left to right direction
+
+'Extensions
+
+DestroyOperator <|-- RandomDestroyOperator
+DestroyOperator <|-- HighestCostDestroyOperator
+
+'Hidden links for visualization
+
+hide empty members
+@enduml

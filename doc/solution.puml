@@ -2,6 +2,8 @@
 
 !include ./style.iuml
 
+skinparam linetype ortho
+
 class Solution {
     Dict[int, Item] items
     List[int] order
@@ -11,8 +13,11 @@ class Solution {
 }
 
 'Aggregations
-Solution::items o- Item
-Solution::vehicle o-left Vehicle
+' Solution::items o- Item
+' Solution::vehicle o-left Vehicle
+
+Solution o- Item
+Solution o-left Vehicle
 
 hide empty members
 @enduml
