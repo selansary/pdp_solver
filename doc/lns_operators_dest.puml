@@ -7,19 +7,19 @@ skinparam linetype ortho
 
 abstract class DestroyOperator {
     Problem problem
-    Solution destroyed_solution
+    Solution solution
     int number_requests_to_remove
     destroy()
 }
 
 class RandomDestroyOperator {
-    destroy()
+    Solution destroy()
 }
 
 class HighestCostDestroyOperator {
-    destroy()
-    _destroy_highest_cost_edges()
-    _destroy_highest_cost_requests()
+    Solution destroy()
+    Solution _destroy_highest_cost_edges()
+    Solution _destroy_highest_cost_requests()
 }
 
 ' left to right direction

@@ -9,6 +9,7 @@ class LNS {
     Solution initial_solution
     ..
     float time_limit
+    float no_improvement_time_limit
     int max_iterations
     int max_iterations_without_improvement
     StoppingCriterion stopping_criterion
@@ -96,7 +97,7 @@ abstract class DestroyOperator {
     Problem problem
     Solution destroyed_solution
     int number_requests_to_remove
-    destroy()
+    Solution destroy()
 }
 
 ' class RandomDestroyOperator {
@@ -113,7 +114,7 @@ abstract class RepairOperator {
     List[List[int] stack_assingment
     OptimizationObjective optimization_objective
     List[List[int]] insertion_orders
-    repair()
+    Solution repair()
 }
 
 ' abstract class LeastCostRepairOperator {

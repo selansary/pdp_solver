@@ -10,35 +10,35 @@ abstract class RepairOperator {
     List[List[int] stack_assingment
     OptimizationObjective optimization_objective
     List[List[int]] insertion_orders
-    repair()
+    Solution repair()
 }
 
 abstract class LeastCostRepairOperator {
-    single_order_repair(List[int] insertion_order)
-    optimal_all_orders_repair()
+    Solution single_order_repair(List[int] insertion_order)
+    Solution optimal_all_orders_repair()
 }
 
 class SingleOrderLeastCostRepairOperator {
     List[int] insertion_order
-    repair()
+    Solution repair()
 }
 
 class ParallelOptimalLeastCostRepairOperator {
-    repair()
+    Solution repair()
     single_order_repair(List[int] insertion_order,
     \t \t  multiprocessing.Queue queue)
 }
 
 class ParallelBestEffortLeastCostRepairOperator {
     int number_processes
-    repair()
+    Solution repair()
     single_order_repair(List[int] insertion_order,
     \t \t \t  multiprocessing.Queue queue)
 }
 
 class GreedyLeastCostInsertRepairOperator {
-    repair()
-    _insert_one_request(int pickup_vertex,
+    Solution repair()
+    Solution _insert_one_request(int pickup_vertex,
     \t \t \t Solution partial_solution)
 
 }
