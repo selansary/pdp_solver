@@ -1,0 +1,11 @@
+@startuml opt_obj
+
+!include ./style.iuml
+
+enum OptimizationObjective {
+    CHEAPEST_ROUTE
+    LEAST_ROTATION
+    CHEAPEST_ROUTE_LEAST_ROTATION
+}
+
+@enduml

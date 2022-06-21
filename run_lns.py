@@ -117,7 +117,8 @@ def run_2d():
     for tl in total_limits:
         possible_time_limits.extend([(i, tl - i) for i in range(1, tl + 1)])
 
-    possible_time_limits = [(500, 0), (1, 500)]
+    # possible_time_limits = [(500, 0), (1, 500)]
+    possible_time_limits = [(2, 2)]
     # possible_time_limits = [(1, 30), (15, 15), (30, 0)]
     # possible_time_limits = [(1, 5), (1, 10), (1, 30), (1, 50), (1, 100), (1, 200)]
 

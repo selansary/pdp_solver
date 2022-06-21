@@ -114,6 +114,7 @@ class DestroyStrategy(Enum):
 
     RANDOM = auto()
     HIGHEST_COST = auto()
+    BIASED_RANDOM_HIGHEST_COST = auto()
 
 
 class RepairStrategy(Enum):
@@ -428,12 +429,26 @@ class LNS:
         )
         return destroy_operator.destroy()
 
+    def _biased_random_highest_cost_destroy(
+        self, solution: Solution, nb_requests_to_remove: int
+    ) -> Solution:
+        # prefer highest cost destroy probalistically
+        hc_prob = 0.75
+        rand = random.choices([True, False], weights=[1- hc_prob, hc_prob])[
+            0
+        ]
+        if rand:
+            return self._random_destroy(solution, nb_requests_to_remove)
+        return self._highest_cost_destroy(solution, nb_requests_to_remove)
+
     def destroy(self, solution: Solution, nb_requests_to_remove: int) -> Solution:
         """Return a destroyed copy of the solution."""
         if self.destroy_strategy == DestroyStrategy.RANDOM:
             return self._random_destroy(solution, nb_requests_to_remove)
         elif self.destroy_strategy == DestroyStrategy.HIGHEST_COST:
             return self._highest_cost_destroy(solution, nb_requests_to_remove)
+        elif self.destroy_strategy == DestroyStrategy.BIASED_RANDOM_HIGHEST_COST:
+            return self._biased_random_highest_cost_destroy(solution, nb_requests_to_remove)
         else:
             raise NotImplementedError
 

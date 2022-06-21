@@ -2,7 +2,7 @@
 
 !include ./style.iuml
 
-' skinparam linetype ortho
+skinparam linetype ortho
 
 class Problem {
     List[Item] items
@@ -35,23 +35,40 @@ class ModelledTwoDimensionalProblem {
                         \t \t \t \t OptimizationObjective)
 }
 
-left to right direction
+enum OptimizationObjective {
+    CHEAPEST_ROUTE
+    LEAST_ROTATION
+    CHEAPEST_ROUTE_LEAST_ROTATION
+}
+
+' left to right direction
 
 'Extensions
 Problem <|-- ModelledBaseProblem
 ModelledBaseProblem <|-- ModelledOneDimensionalProblem
 
-Problem <|-right- TwoDimensionalProblem
-ModelledBaseProblem <|-right- ModelledTwoDimensionalProblem
+Problem <|-- TwoDimensionalProblem
+ModelledBaseProblem <|-- ModelledTwoDimensionalProblem
 TwoDimensionalProblem <|-- ModelledTwoDimensionalProblem
 
 'Aggregations
-Item --o Problem::items
-Vehicle --o Problem::vehicle
+' Item --o Problem::items
+' Vehicle --o Problem::vehicle
 
-'Associations
-Solution -- Problem::evaluate_solution
-OptimizationObjective -- Problem::evaluate_solution
+' 'Associations
+' Solution -- Problem::evaluate_solution
+' OptimizationObjective -- Problem::evaluate_solution
+
+' first trial
+' Solution --left Problem
+' OptimizationObjective -left Problem
+' Item -o Problem
+' Vehicle -o Problem
+
+Solution -left Problem
+OptimizationObjective - Problem
+Item --o Problem
+Vehicle --o Problem
 
 'Hidden links for visualization
 

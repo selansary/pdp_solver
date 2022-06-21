@@ -1,0 +1,58 @@
+@startuml lns_operators_repair
+
+!include ./style.iuml
+
+skinparam linetype ortho
+
+abstract class RepairOperator {
+    Problem problem
+    Solution destroyed_solution
+    List[List[int] stack_assingment
+    OptimizationObjective optimization_objective
+    List[List[int]] insertion_orders
+    Solution repair()
+}
+
+abstract class LeastCostRepairOperator {
+    Solution single_order_repair(List[int] insertion_order)
+    Solution optimal_all_orders_repair()
+}
+
+class SingleOrderLeastCostRepairOperator {
+    List[int] insertion_order
+    Solution repair()
+}
+
+class ParallelOptimalLeastCostRepairOperator {
+    Solution repair()
+    single_order_repair(List[int] insertion_order,
+    \t \t  multiprocessing.Queue queue)
+}
+
+class ParallelBestEffortLeastCostRepairOperator {
+    int number_processes
+    Solution repair()
+    single_order_repair(List[int] insertion_order,
+    \t \t \t  multiprocessing.Queue queue)
+}
+
+class GreedyLeastCostInsertRepairOperator {
+    Solution repair()
+    Solution _insert_one_request(int pickup_vertex,
+    \t \t \t Solution partial_solution)
+
+}
+' left to right direction
+
+'Extensions
+
+RepairOperator <|-- LeastCostRepairOperator
+LeastCostRepairOperator <|-- SingleOrderLeastCostRepairOperator
+LeastCostRepairOperator <|-- ParallelOptimalLeastCostRepairOperator
+LeastCostRepairOperator <|-- ParallelBestEffortLeastCostRepairOperator
+RepairOperator <|-- GreedyLeastCostInsertRepairOperator
+
+'Hidden links for visualization
+
+hide empty members
+@enduml

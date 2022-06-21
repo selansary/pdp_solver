@@ -1,0 +1,181 @@
+@startuml lns_main_associations
+
+!include ./style.iuml
+
+skinparam linetype ortho
+
+class LNS {
+    Problem problem
+    Solution initial_solution
+    ..
+    float time_limit
+    float no_improvement_time_limit
+    int max_iterations
+    int max_iterations_without_improvement
+    StoppingCriterion stopping_criterion
+    ..
+    float min_distruction_degree
+    float max_distruction_degree
+    DestructionDegreeCriterion destruction_degree_criterion
+    ..
+    DestroyStratedy destroy_strategy
+    RepairStrategy repair_strategy
+    OptimizationObjective optimizatoin_objective
+    ..
+    AcceptanceCriterion acceptance_criterion
+    List[Solution] solutions_cache
+    ..
+    float start_time
+    int iteration
+    --
+    'Methods
+    Solution search()
+    bool stop()
+    int get_destruction_degree()
+    Solution destroy(Solution solution, int degree)
+    Solution repair(Solution destroyed_solution)
+    bool accept(Solution old_solution, Solution new_solution)
+    ..
+    set_stopping_criterion(StoppingCriterion stopping_criterion)
+    set_destruction_degree_criterion(DestructionDegreeCriterion, \n \t \t \t \t \t \t destruction_degree_criterion)
+    set_destroy_strategy(DestroyStrategy destroy_strategy)
+    set_rapair_strategy(RepairStrategy repair_strategy)
+}
+
+class PLNS {
+    int number_processes
+    multiprocessing.pool.Pool processing_pool
+    multiprocessing.pool.Pool init_processing_pool()
+    terminate_processing_pool()
+    Solution search()
+    Solution repair(Solution destroyed_solution)
+}
+
+
+abstract class AcceptanceCriterion {
+    apply_acceptance_function(old_solution: Solution,
+        \t \t \t \t \t new_solution: Solution, \n  \t \t \t \t \t eval_fun: Callable[[Solution], int])
+    update_acceptance_params(...)
+}
+
+' class SimulatedAnnealing {
+'     float alpha
+'     float temperature
+'     apply_acceptance_function(old_solution: Solution,
+'         \t \t \t \t \t new_solution: Solution, \n  \t \t \t \t \t eval_fun: Callable[[Solution], int])
+'     update_acceptance_params(...)
+' }
+
+enum StoppingCriterion {
+    TIMELIMIT
+    MAX_ITERATIONS
+    NO_IMPROVEMENT
+    MAX_ITERATIONS_TIMELIMIT
+    NO_IMPROVEMENT_TIMELIMIT
+}
+
+enum DestructionDegreeCriterion {
+    RANDOM
+    CONSTANT
+    GRADUALLY_INCREASING
+    GRADUALLY_DECREASING
+}
+
+enum DestroyStratedy {
+    RANDOM
+    HIGHTEST_COST
+    BIASED_RANDOM_HIGHEST_COST
+}
+
+enum RepairStrategy{
+    GREEDY_LEAST_COST_INSERT
+    RANDOM_SINGLE_ORDER_LEAST_COST
+    PARALLEL_OPTIMAL_LEAST_COST
+}
+
+abstract class DestroyOperator {
+    Problem problem
+    Solution destroyed_solution
+    int number_requests_to_remove
+    Solution destroy()
+}
+
+' class RandomDestroyOperator {
+'     destroy()
+' }
+
+' class HighestCostDestroyOperator {
+'     destroy()
+' }
+
+abstract class RepairOperator {
+    Problem problem
+    Solution destroyed_solution
+    List[List[int] stack_assingment
+    OptimizationObjective optimization_objective
+    List[List[int]] insertion_orders
+    Solution repair()
+}
+
+' abstract class LeastCostRepairOperator {
+'     single_order_repair(List[int] insertion_order)
+'     optimal_all_orders_repair()
+' }
+
+' abstract class SingleOrderLeastCostRepairOperator {
+'     List[int] insertion_order
+'     repair()
+' }
+
+' abstract class ParallelOptimalLeastCostRepairOperator {
+'     repair()
+'     single_order_repair(List[int] insertion_order,
+'     \t \t  multiprocessing.Queue queue)
+' }
+
+left to right direction
+
+'Extensions
+' AcceptanceCriterion <|-right- SimulatedAnnealing
+
+' DestroyOperator <|-- RandomDestroyOperator
+' DestroyOperator <|-- HighestCostDestroyOperator
+
+' RepairOperator <|-right- LeastCostRepairOperator
+' LeastCostRepairOperator <|-- SingleOrderLeastCostRepairOperator
+' LeastCostRepairOperator <|-- ParallelOptimalLeastCostRepairOperator
+
+LNS <|-right- PLNS
+
+' 'Aggregations
+' Problem --o LNS::problem
+' Solution --o LNS::initial_solution
+
+' LNS::optimizatoin_objective o-- OptimizationObjective
+' LNS::stopping_criterion o-- StoppingCriterion
+' LNS::acceptance_criterion o-- AcceptanceCriterion
+' LNS::destruction_degree_criterion o-- DestructionDegreeCriterion
+' LNS::destroy_strategy o-- DestroyStratedy
+' LNS::repair_strategy o-- RepairStrategy
+
+' 'Associations
+' LNS::destroy .. DestroyOperator
+' LNS::repair .. RepairOperator
+
+Problem -right-o LNS
+Solution -right-o LNS
+
+LNS o-- StoppingCriterion
+LNS o-- AcceptanceCriterion
+LNS o-- DestructionDegreeCriterion
+LNS o-- DestroyStratedy
+LNS o-- RepairStrategy
+
+'Associations
+LNS .. DestroyOperator
+LNS .. RepairOperator
+
+'Hidden links for visualization
+
+hide empty members
+@enduml

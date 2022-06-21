@@ -2,7 +2,8 @@
 
 !include ./style.iuml
 
-' skinparam linetype ortho
+' skinparam linetype polyline
+skinparam linetype ortho
 
 class Item {
     int length
@@ -26,11 +27,11 @@ class Vehicle {
     List[Compartment] compartments
 }
 
-enum OptimizationObjective {
-    CHEAPEST_ROUTE
-    LEAST_ROTATION
-    CHEAPEST_ROUTE_LEAST_ROTATION
-}
+' enum OptimizationObjective {
+'     CHEAPEST_ROUTE
+'     LEAST_ROTATION
+'     CHEAPEST_ROUTE_LEAST_ROTATION
+' }
 
 'Extensions
 Compartment <|-- TwoDimensionalCompartment
@@ -40,9 +41,12 @@ Item <|-- TwoDimensionalItem
 
 'Compositions
 Vehicle *-- Compartment
+' Vehicle *-[hidden]- Item
 
 'Associations
-Item - Compartment::is_item_compatible
-' Item - Compartment::demand_for_item
+Item - Compartment
+' Item -[hidden] Compartment::is_item_compatible
+' Item -[hidden] Compartment::demand_for_item
+' Item - Compartment::depth
 
 @enduml
