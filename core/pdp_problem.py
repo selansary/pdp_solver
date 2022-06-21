@@ -322,7 +322,8 @@ class ModelledBaseProblem(Problem):
             return
 
         if write_model:
-            self.model.write("./lp_models/" + self.name + ".lp")
+            # self.model.write("./lp_models/" + self.name + ".lp")
+            self.model.write(self.name + ".lp")
 
         self.model.Params.TimeLimit = time_limit
         self.model.optimize()
